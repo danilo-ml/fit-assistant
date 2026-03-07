@@ -1,0 +1,401 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FitAgent Infrastructure - DynamoDB Table with GSIs for Multi-Agent Architecture'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Description: Environment name for resource naming
+
+  TableReadCapacity:
+    Type: Number
+    Default: 5
+    Description: Read capacity units for DynamoDB table
+
+  TableWriteCapacity:
+    Type: Number
+    Default: 5
+    Description: Write capacity units for DynamoDB table
+
+  TwilioAccountSid:
+    Type: String
+    NoEcho: true
+    Description: Twilio Account SID for WhatsApp messaging
+
+  TwilioAuthToken:
+    Type: String
+    NoEcho: true
+    Description: Twilio Auth Token for WhatsApp messaging
+
+  TwilioWhatsAppNumber:
+    Type: String
+    Description: Twilio WhatsApp number (format whatsapp:+1234567890)
+
+Resources:
+  FitAgentTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'fitagent-main-${Environment}'
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref TableReadCapacity
+        WriteCapacityUnits: !Ref TableWriteCapacity
+      
+      # Primary Key
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: phone_number
+          AttributeType: S
+        - AttributeName: entity_type
+          AttributeType: S
+        - AttributeName: trainer_id
+          AttributeType: S
+        - AttributeName: session_datetime
+          AttributeType: S
+        - AttributeName: payment_status_created_at
+          AttributeType: S
+        - AttributeName: confirmation_status_datetime
+          AttributeType: S
+      
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      
+      # Global Secondary Indexes
+      GlobalSecondaryIndexes:
+        # Phone number lookup for user identification and routing
+        - IndexName: phone-number-index
+          KeySchema:
+            - AttributeName: phone_number
+              KeyType: HASH
+            - AttributeName: entity_type
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: !Ref TableReadCapacity
+            WriteCapacityUnits: !Ref TableWriteCapacity
+        
+        # Session date queries and calendar view
+        - IndexName: session-date-index
+          KeySchema:
+            - AttributeName: trainer_id
+              KeyType: HASH
+            - AttributeName: session_datetime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: !Ref TableReadCapacity
+            WriteCapacityUnits: !Ref TableWriteCapacity
+        
+        # Payment tracking and filtering by status
+        - IndexName: payment-status-index
+          KeySchema:
+            - AttributeName: trainer_id
+              KeyType: HASH
+            - AttributeName: payment_status_created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: !Ref TableReadCapacity
+            WriteCapacityUnits: !Ref TableWriteCapacity
+        
+        # Session confirmation status queries and analytics
+        - IndexName: session-confirmation-index
+          KeySchema:
+            - AttributeName: trainer_id
+              KeyType: HASH
+            - AttributeName: confirmation_status_datetime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: !Ref TableReadCapacity
+            WriteCapacityUnits: !Ref TableWriteCapacity
+      
+      # Enable point-in-time recovery
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      
+      # Enable encryption at rest
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      
+      # Enable streams for change data capture
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # IAM Role for Message Processor Lambda
+  MessageProcessorLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'fitagent-message-processor-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt FitAgentTable.Arn
+                  - !Sub '${FitAgentTable.Arn}/index/*'
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: '*'
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: '*'
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: '*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # IAM Role for Session Confirmation Lambda
+  SessionConfirmationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'fitagent-session-confirmation-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt FitAgentTable.Arn
+                  - !Sub '${FitAgentTable.Arn}/index/*'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # Message Processor Lambda Function
+  MessageProcessorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'fitagent-message-processor-${Environment}'
+      Runtime: python3.12
+      Handler: src.handlers.message_processor.lambda_handler
+      Role: !GetAtt MessageProcessorLambdaRole.Arn
+      Timeout: 180
+      MemorySize: 1024
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref FitAgentTable
+          TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
+          TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
+          TWILIO_WHATSAPP_NUMBER: !Ref TwilioWhatsAppNumber
+          ENVIRONMENT: !Ref Environment
+          ENABLE_MULTI_AGENT: 'false'
+          BEDROCK_MODEL_ID: 'amazon.nova-micro-v1:0'
+          BEDROCK_REGION: !Ref AWS::Region
+          AWS_REGION: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          # Placeholder - actual code deployed via CI/CD
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # Session Confirmation Lambda Function
+  SessionConfirmationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'fitagent-session-confirmation-${Environment}'
+      Runtime: python3.12
+      Handler: src.handlers.session_confirmation.lambda_handler
+      Role: !GetAtt SessionConfirmationLambdaRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref FitAgentTable
+          TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
+          TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
+          TWILIO_WHATSAPP_NUMBER: !Ref TwilioWhatsAppNumber
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          # Placeholder - actual code deployed via CI/CD
+          def lambda_handler(event, context):
+              return {'statusCode': 200, 'body': 'Placeholder'}
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # EventBridge Rule for Session Confirmation
+  SessionConfirmationRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'session-confirmation-trigger-${Environment}'
+      Description: Triggers session confirmation handler every 5 minutes
+      ScheduleExpression: "cron(*/5 * * * ? *)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SessionConfirmationFunction.Arn
+          Id: SessionConfirmationTarget
+      EventBusName: default
+
+  # Lambda Permission for EventBridge Invocation
+  SessionConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SessionConfirmationFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SessionConfirmationRule.Arn
+
+Outputs:
+  TableName:
+    Description: DynamoDB table name
+    Value: !Ref FitAgentTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TableName'
+  
+  TableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt FitAgentTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TableArn'
+  
+  TableStreamArn:
+    Description: DynamoDB table stream ARN
+    Value: !GetAtt FitAgentTable.StreamArn
+    Export:
+      Name: !Sub '${AWS::StackName}-TableStreamArn'
+  
+  PhoneNumberIndexName:
+    Description: Phone number GSI name
+    Value: phone-number-index
+    Export:
+      Name: !Sub '${AWS::StackName}-PhoneNumberIndex'
+  
+  SessionDateIndexName:
+    Description: Session date GSI name
+    Value: session-date-index
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionDateIndex'
+  
+  PaymentStatusIndexName:
+    Description: Payment status GSI name
+    Value: payment-status-index
+    Export:
+      Name: !Sub '${AWS::StackName}-PaymentStatusIndex'
+  
+  SessionConfirmationIndexName:
+    Description: Session confirmation status GSI name
+    Value: session-confirmation-index
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionConfirmationIndex'
+
+  SessionConfirmationFunctionArn:
+    Description: Session Confirmation Lambda function ARN
+    Value: !GetAtt SessionConfirmationFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionConfirmationFunctionArn'
+
+  SessionConfirmationFunctionName:
+    Description: Session Confirmation Lambda function name
+    Value: !Ref SessionConfirmationFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionConfirmationFunctionName'
+
+  SessionConfirmationRuleArn:
+    Description: Session Confirmation EventBridge rule ARN
+    Value: !GetAtt SessionConfirmationRule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionConfirmationRuleArn'
+
+  SessionConfirmationRuleName:
+    Description: Session Confirmation EventBridge rule name
+    Value: !Ref SessionConfirmationRule
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionConfirmationRuleName'
+
+  MessageProcessorFunctionArn:
+    Description: Message Processor Lambda function ARN
+    Value: !GetAtt MessageProcessorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-MessageProcessorFunctionArn'
+
+  MessageProcessorFunctionName:
+    Description: Message Processor Lambda function name
+    Value: !Ref MessageProcessorFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-MessageProcessorFunctionName'

@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: fitagent-localstack
+    ports:
+      - "4566:4566"
+      - "4571:4571"
+    environment:
+      - SERVICES=dynamodb,s3,sqs,lambda,apigateway,events,secretsmanager,kms
+      - DEBUG=1
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "./localstack-init:/etc/localstack/init/ready.d"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - fitagent-network
+
+  api:
+    build: .
+    container_name: fitagent-api
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=local
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - DYNAMODB_TABLE=fitagent-main
+      - S3_BUCKET=fitagent-receipts-local
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/fitagent-messages
+      - NOTIFICATION_QUEUE_URL=http://localstack:4566/000000000000/fitagent-notifications
+      - DLQ_URL=http://localstack:4566/000000000000/fitagent-messages-dlq
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - OUTLOOK_CLIENT_ID=${OUTLOOK_CLIENT_ID}
+      - OUTLOOK_CLIENT_SECRET=${OUTLOOK_CLIENT_SECRET}
+      - OAUTH_REDIRECT_URI=http://localhost:8000/oauth/callback
+    depends_on:
+      - localstack
+    volumes:
+      - "./src:/app/src"
+      - "./tests:/app/tests"
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - fitagent-network
+
+networks:
+  fitagent-network:
+    driver: bridge

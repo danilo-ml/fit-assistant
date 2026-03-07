@@ -1,0 +1,40 @@
+security: Remove exposed Twilio credentials and implement security measures
+
+SECURITY INCIDENT RESOLVED:
+- Removed exposed Twilio credentials from all tracked files
+- Replaced with placeholder values in .env and staging parameters
+- Updated validation in startup scripts
+
+SECURITY MEASURES IMPLEMENTED:
+- Created automated resolution script (scripts/resolve_security_incident.sh)
+- Created security tools setup script (scripts/setup_security_tools.sh)
+- Added pre-commit hooks configuration (.pre-commit-config.yaml)
+- Added security policy (.github/SECURITY.md)
+- Created comprehensive security documentation
+
+FILES MODIFIED:
+- .env: Replaced credentials with placeholders
+- infrastructure/parameters/staging.json: Already had placeholders
+- scripts/start_local_with_twilio.sh: Updated credential validation
+- SECURITY_INCIDENT_RESPONSE.md: Redacted credential examples
+- URGENT_SECURITY_ACTIONS.md: Redacted credential examples
+- scripts/resolve_security_incident.sh: Redacted credential examples
+
+NEW FILES:
+- scripts/resolve_security_incident.sh: Automated incident resolution
+- scripts/setup_security_tools.sh: Security tools installer
+- .pre-commit-config.yaml: Pre-commit hooks configuration
+- .github/SECURITY.md: Security policy and best practices
+- SECURITY_INCIDENT_RESPONSE.md: Detailed incident response guide
+- URGENT_SECURITY_ACTIONS.md: Quick action checklist
+- SECURITY_RESOLUTION_COMPLETE.md: Resolution summary
+- infrastructure/PRODUCTION_DEPLOYMENT.md: Production deployment guide
+- infrastructure/parameters/production.json: Production parameters template
+
+NEXT STEPS:
+1. Rotate Twilio credentials immediately
+2. Check for unauthorized usage
+3. Install pre-commit hooks: ./scripts/setup_security_tools.sh
+4. Optional: Clean Git history with BFG Repo-Cleaner
+
+All tracked files are now clean and safe to push.
