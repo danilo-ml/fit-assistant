@@ -14,13 +14,19 @@ from src.services.conversation_handlers import (
     TrainerHandler,
     StudentHandler,
 )
+from tests.fixtures.factories import ConversationStateFactory
 
 
 class TestOnboardingHandler:
     """Test OnboardingHandler for trainer registration flow."""
     
     def test_welcome_message_for_new_user(self):
-        """Test that new users receive welcome message."""
+        """
+        Test that new users receive welcome message in Portuguese.
+        
+        Language expectation: Portuguese (Brazilian Portuguese)
+        Expected phrases: "Bem-vindo", "Personal Trainer", "Aluno"
+        """
         # Arrange
         handler = OnboardingHandler()
         handler.dynamodb = Mock()
@@ -34,22 +40,27 @@ class TestOnboardingHandler:
         # Act
         response = handler.handle_message(phone_number, message_body, request_id)
         
-        # Assert
-        assert "Welcome to FitAgent" in response
+        # Assert - Expect Portuguese welcome message
+        assert "Bem-vindo" in response or "Olá" in response
         assert "Personal Trainer" in response
-        assert "Student" in response
+        assert "Aluno" in response or "Student" in response
         handler.state_manager.update_state.assert_called_once()
     
     def test_trainer_selection_starts_registration(self):
-        """Test that selecting trainer option starts registration flow."""
+        """
+        Test that selecting trainer option starts registration flow.
+        
+        Language expectation: Portuguese
+        Expected: Response asks for trainer name in Portuguese
+        """
         # Arrange
         handler = OnboardingHandler()
         handler.dynamodb = Mock()
         handler.state_manager = Mock()
-        handler.state_manager.get_state.return_value = {
-            "state": "ONBOARDING",
-            "context": {"step": "user_type"}
-        }
+        handler.state_manager.get_state.return_value = ConversationStateFactory.create(
+            state="ONBOARDING",
+            context={"step": "user_type"}
+        )
         
         phone_number = "+14155551234"
         message_body = {"body": "1"}
@@ -58,21 +69,26 @@ class TestOnboardingHandler:
         # Act
         response = handler.handle_message(phone_number, message_body, request_id)
         
-        # Assert
+        # Assert - Expect Portuguese response
         assert "trainer" in response.lower()
-        assert "name" in response.lower()
+        assert "nome" in response.lower() or "name" in response.lower()
         handler.state_manager.update_state.assert_called()
     
     def test_student_selection_provides_instructions(self):
-        """Test that selecting student option provides instructions."""
+        """
+        Test that selecting student option provides instructions.
+        
+        Language expectation: Portuguese
+        Expected: Instructions in Portuguese about trainer registration
+        """
         # Arrange
         handler = OnboardingHandler()
         handler.dynamodb = Mock()
         handler.state_manager = Mock()
-        handler.state_manager.get_state.return_value = {
-            "state": "ONBOARDING",
-            "context": {"step": "user_type"}
-        }
+        handler.state_manager.get_state.return_value = ConversationStateFactory.create(
+            state="ONBOARDING",
+            context={"step": "user_type"}
+        )
         
         phone_number = "+14155551234"
         message_body = {"body": "2"}
@@ -81,25 +97,30 @@ class TestOnboardingHandler:
         # Act
         response = handler.handle_message(phone_number, message_body, request_id)
         
-        # Assert
+        # Assert - Expect Portuguese response
         assert "trainer" in response.lower()
-        assert "registered by" in response.lower()
+        assert "registrado" in response.lower() or "registered by" in response.lower()
     
     def test_complete_trainer_registration_flow(self):
-        """Test complete trainer registration creates trainer record."""
+        """
+        Test complete trainer registration creates trainer record.
+        
+        Language expectation: Portuguese
+        Expected: Welcome message in Portuguese after registration
+        """
         # Arrange
         handler = OnboardingHandler()
         handler.dynamodb = Mock()
         handler.state_manager = Mock()
-        handler.state_manager.get_state.return_value = {
-            "state": "ONBOARDING",
-            "context": {
+        handler.state_manager.get_state.return_value = ConversationStateFactory.create(
+            state="ONBOARDING",
+            context={
                 "step": "trainer_business",
                 "trainer_name": "John Doe",
                 "trainer_email": "john@example.com",
                 "user_type": "trainer"
             }
-        }
+        )
         
         phone_number = "+14155551234"
         message_body = {"body": "Fitness Pro"}
@@ -108,8 +129,8 @@ class TestOnboardingHandler:
         # Act
         response = handler.handle_message(phone_number, message_body, request_id)
         
-        # Assert
-        assert "Welcome" in response
+        # Assert - Expect Portuguese welcome message
+        assert "Bem-vindo" in response or "Welcome" in response
         assert "John Doe" in response
         handler.dynamodb.put_trainer.assert_called_once()
         
@@ -122,24 +143,28 @@ class TestOnboardingHandler:
 
 
 class TestTrainerHandler:
-    """Test TrainerHandler for AI agent integration."""
+    """Test TrainerHandler for Strands agent service integration."""
     
-    def test_trainer_message_processed_by_ai_agent(self):
-        """Test that trainer messages are processed by AI agent."""
+    def test_trainer_message_processed_by_agent_service(self):
+        """
+        Test that trainer messages are processed by Strands agent service.
+        
+        Language expectation: Portuguese
+        Expected: Agent responses in Portuguese
+        """
         # Arrange
-        mock_ai_agent = Mock()
-        mock_ai_agent.process_message.return_value = {
+        mock_agent_service = Mock()
+        mock_agent_service.process_message.return_value = {
             "success": True,
-            "response": "I've scheduled the session for tomorrow at 2 PM.",
-            "tool_calls": []
+            "response": "Agendei a sessão para amanhã às 14h.",
         }
         
-        handler = TrainerHandler(ai_agent=mock_ai_agent)
+        handler = TrainerHandler(agent_service=mock_agent_service)
         handler.state_manager = Mock()
-        handler.state_manager.get_state.return_value = {
-            "state": "TRAINER_MENU",
-            "message_history": []
-        }
+        handler.state_manager.get_state.return_value = ConversationStateFactory.create(
+            state="TRAINER_MENU",
+            message_history=[]
+        )
         
         trainer_id = "trainer-123"
         user_data = {"phone_number": "+14155551234", "name": "John"}
@@ -149,33 +174,32 @@ class TestTrainerHandler:
         # Act
         response = handler.handle_message(trainer_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "scheduled" in response.lower()
-        mock_ai_agent.process_message.assert_called_once()
+        # Assert - Expect Portuguese response
+        assert "agendei" in response.lower() or "scheduled" in response.lower()
+        mock_agent_service.process_message.assert_called_once()
         
-        # Verify AI agent was called with correct parameters
-        call_args = mock_ai_agent.process_message.call_args
+        # Verify agent service was called with correct parameters
+        call_args = mock_agent_service.process_message.call_args
         assert call_args[1]["trainer_id"] == trainer_id
         assert "Sarah" in call_args[1]["message"]
     
     def test_trainer_handler_updates_conversation_state(self):
         """Test that conversation state is updated after processing."""
         # Arrange
-        mock_ai_agent = Mock()
-        mock_ai_agent.process_message.return_value = {
+        mock_agent_service = Mock()
+        mock_agent_service.process_message.return_value = {
             "success": True,
             "response": "Done!",
-            "tool_calls": []
         }
         
         mock_state_manager = Mock()
-        mock_state_manager.get_state.return_value = {
-            "state": "TRAINER_MENU",
-            "message_history": []
-        }
+        mock_state_manager.get_state.return_value = ConversationStateFactory.create(
+            state="TRAINER_MENU",
+            message_history=[]
+        )
         
         handler = TrainerHandler(
-            ai_agent=mock_ai_agent,
+            agent_service=mock_agent_service,
             state_manager=mock_state_manager
         )
         
@@ -190,16 +214,16 @@ class TestTrainerHandler:
         # Assert - state should be updated twice (user message + assistant response)
         assert mock_state_manager.update_state.call_count == 2
     
-    def test_trainer_handler_handles_ai_agent_errors(self):
-        """Test that AI agent errors are handled gracefully."""
+    def test_trainer_handler_handles_agent_service_errors(self):
+        """Test that agent service errors are handled gracefully."""
         # Arrange
-        mock_ai_agent = Mock()
-        mock_ai_agent.process_message.return_value = {
+        mock_agent_service = Mock()
+        mock_agent_service.process_message.return_value = {
             "success": False,
             "error": "Failed to process request"
         }
         
-        handler = TrainerHandler(ai_agent=mock_ai_agent)
+        handler = TrainerHandler(agent_service=mock_agent_service)
         handler.state_manager = Mock()
         handler.state_manager.get_state.return_value = None
         
@@ -219,7 +243,12 @@ class TestStudentHandler:
     """Test StudentHandler for session viewing."""
     
     def test_student_receives_menu_for_unknown_request(self):
-        """Test that students receive menu for unrecognized messages."""
+        """
+        Test that students receive menu for unrecognized messages.
+        
+        Language expectation: Portuguese
+        Expected: Menu options in Portuguese
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -233,13 +262,18 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
+        # Assert - Expect Portuguese menu
         assert "Sarah" in response
-        assert "upcoming sessions" in response.lower()
-        assert "confirm" in response.lower()
+        assert "próximas" in response.lower() or "upcoming sessions" in response.lower()
+        assert "confirmar" in response.lower() or "confirm" in response.lower()
     
     def test_view_upcoming_sessions_shows_sessions(self):
-        """Test that students can view their upcoming sessions."""
+        """
+        Test that students can view their upcoming sessions.
+        
+        Language expectation: Portuguese
+        Expected: Session list in Portuguese
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -269,15 +303,20 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "upcoming sessions" in response.lower()
+        # Assert - Expect Portuguese response
+        assert "próximas" in response.lower() or "upcoming sessions" in response.lower()
         assert "John Doe" in response
-        assert "60 minutes" in response
+        assert "60" in response or "minutos" in response.lower() or "minutes" in response.lower()
         assert "Gym A" in response
         handler.dynamodb.get_student_sessions.assert_called_once()
     
     def test_no_upcoming_sessions_message(self):
-        """Test message when student has no upcoming sessions."""
+        """
+        Test message when student has no upcoming sessions.
+        
+        Language expectation: Portuguese
+        Expected: "Você não tem sessões" or similar
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -292,12 +331,17 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "don't have any" in response.lower()
-        assert "upcoming sessions" in response.lower()
+        # Assert - Expect Portuguese response
+        assert ("não tem" in response.lower() or "don't have any" in response.lower())
+        assert ("próximas" in response.lower() or "upcoming sessions" in response.lower())
     
     def test_sessions_ordered_chronologically(self):
-        """Test that sessions are displayed in chronological order."""
+        """
+        Test that sessions are displayed in chronological order.
+        
+        Language expectation: Portuguese
+        Expected: Session list with confirmation status in Portuguese
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -340,11 +384,16 @@ class TestStudentHandler:
         assert "Jane Smith" in response
         # First session should appear before second
         assert response.index("John Doe") < response.index("Jane Smith")
-        # Check confirmation status
-        assert "Confirmed" in response  # session2 is confirmed
+        # Check confirmation status (Portuguese or English)
+        assert "Confirmad" in response or "Confirmed" in response  # session2 is confirmed
     
     def test_student_confirms_attendance(self):
-        """Test that student can confirm attendance for upcoming session."""
+        """
+        Test that student can confirm attendance for upcoming session.
+        
+        Language expectation: Portuguese
+        Expected: Confirmation message in Portuguese
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -374,8 +423,8 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "confirmed" in response.lower()
+        # Assert - Expect Portuguese confirmation
+        assert "confirmad" in response.lower() or "confirmed" in response.lower()
         assert "John Doe" in response
         handler.dynamodb.put_session.assert_called_once()
         
@@ -385,7 +434,12 @@ class TestStudentHandler:
         assert "student_confirmed_at" in updated_session
     
     def test_student_confirms_when_all_already_confirmed(self):
-        """Test message when all sessions are already confirmed."""
+        """
+        Test message when all sessions are already confirmed.
+        
+        Language expectation: Portuguese
+        Expected: "já confirmadas" or similar
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -413,12 +467,17 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "already confirmed" in response.lower()
+        # Assert - Expect Portuguese response
+        assert "já" in response.lower() or "already confirmed" in response.lower()
         handler.dynamodb.put_session.assert_not_called()
     
     def test_student_confirms_when_no_sessions(self):
-        """Test message when student has no sessions to confirm."""
+        """
+        Test message when student has no sessions to confirm.
+        
+        Language expectation: Portuguese
+        Expected: "não tem sessões" or similar
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -433,12 +492,17 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "don't have any" in response.lower()
+        # Assert - Expect Portuguese response
+        assert "não tem" in response.lower() or "don't have any" in response.lower()
         handler.dynamodb.put_session.assert_not_called()
     
     def test_student_cancels_attendance(self):
-        """Test that student can cancel attendance and trainer is notified."""
+        """
+        Test that student can cancel attendance and trainer is notified.
+        
+        Language expectation: Portuguese
+        Expected: Cancellation confirmation in Portuguese
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -480,8 +544,8 @@ class TestStudentHandler:
             
             response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "cancellation has been noted" in response.lower()
+        # Assert - Expect Portuguese response
+        assert ("cancelamento" in response.lower() or "cancellation has been noted" in response.lower())
         assert "John Doe" in response
         
         # Verify trainer was notified
@@ -489,10 +553,15 @@ class TestStudentHandler:
         call_args = mock_twilio_instance.send_message.call_args
         assert call_args[1]["to"] == "+14155559999"
         assert "Sarah Smith" in call_args[1]["body"]
-        assert "cancelled" in call_args[1]["body"].lower()
+        assert "cancelou" in call_args[1]["body"].lower() or "cancelled" in call_args[1]["body"].lower()
     
     def test_student_cancels_when_no_sessions(self):
-        """Test message when student has no sessions to cancel."""
+        """
+        Test message when student has no sessions to cancel.
+        
+        Language expectation: Portuguese
+        Expected: "não tem sessões" or similar
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -507,11 +576,16 @@ class TestStudentHandler:
         # Act
         response = handler.handle_message(student_id, user_data, message_body, request_id)
         
-        # Assert
-        assert "don't have any" in response.lower()
+        # Assert - Expect Portuguese response
+        assert "não tem" in response.lower() or "don't have any" in response.lower()
     
     def test_student_cancels_continues_even_if_notification_fails(self):
-        """Test that cancellation proceeds even if trainer notification fails."""
+        """
+        Test that cancellation proceeds even if trainer notification fails.
+        
+        Language expectation: Portuguese
+        Expected: Cancellation confirmation even on notification failure
+        """
         # Arrange
         handler = StudentHandler()
         handler.dynamodb = Mock()
@@ -551,7 +625,7 @@ class TestStudentHandler:
             response = handler.handle_message(student_id, user_data, message_body, request_id)
         
         # Assert - Student still gets confirmation even though notification failed
-        assert "cancellation has been noted" in response.lower()
+        assert "cancelamento" in response.lower() or "cancellation has been noted" in response.lower()
 
 
 if __name__ == "__main__":

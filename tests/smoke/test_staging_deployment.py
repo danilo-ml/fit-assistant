@@ -166,7 +166,6 @@ class TestLambdaFunctions:
             "TWILIO_AUTH_TOKEN",
             "TWILIO_WHATSAPP_NUMBER",
             "ENVIRONMENT",
-            "ENABLE_MULTI_AGENT",
             "BEDROCK_MODEL_ID",
         ]
         
@@ -186,8 +185,8 @@ class TestLambdaFunctions:
         assert config["MemorySize"] == 512
         assert config["State"] == "Active"
     
-    def test_lambda_functions_have_strands_sdk(self, aws_clients, stack_outputs):
-        """Verify Lambda functions include Strands SDK in deployment package."""
+    def test_lambda_functions_have_strands_agents_sdk(self, aws_clients, stack_outputs):
+        """Verify Lambda functions include Strands Agents SDK in deployment package."""
         lambda_client = aws_clients["lambda"]
         function_name = stack_outputs["MessageProcessorFunctionName"]
         
@@ -195,9 +194,9 @@ class TestLambdaFunctions:
         response = lambda_client.get_function(FunctionName=function_name)
         code_size = response["Configuration"]["CodeSize"]
         
-        # Strands SDK should add significant size to the package
+        # Strands Agents SDK should add significant size to the package
         # Minimum expected size with dependencies: ~5MB
-        assert code_size > 5_000_000, f"Package size ({code_size} bytes) seems too small - Strands SDK may be missing"
+        assert code_size > 5_000_000, f"Package size ({code_size} bytes) seems too small - Strands Agents SDK may be missing"
 
 
 class TestEventBridgeRule:
@@ -361,10 +360,9 @@ def pytest_sessionfinish(session, exitstatus):
         print("="*60)
         print("\nStaging environment is ready for testing.")
         print("\nNext steps:")
-        print("  1. Enable multi-agent feature flag for test trainers")
-        print("  2. Send test WhatsApp messages")
-        print("  3. Monitor CloudWatch logs and metrics")
-        print("  4. Verify session confirmation flow")
+        print("  1. Send test WhatsApp messages")
+        print("  2. Monitor CloudWatch logs and metrics")
+        print("  3. Verify session confirmation flow")
     else:
         print("\n" + "="*60)
         print("✗ Some smoke tests failed")

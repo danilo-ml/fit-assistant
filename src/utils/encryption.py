@@ -10,7 +10,7 @@ from typing import Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from src.config import settings
+from config import settings
 
 
 class EncryptionError(Exception):

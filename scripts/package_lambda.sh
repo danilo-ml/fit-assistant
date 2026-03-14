@@ -28,7 +28,7 @@ echo ""
 
 # Step 2: Install dependencies
 echo -e "${YELLOW}[2/5] Installing dependencies...${NC}"
-pip install -r "$REQUIREMENTS_FILE" -t "$PACKAGE_DIR" --upgrade --quiet
+pip install -r "$REQUIREMENTS_FILE" -t "$PACKAGE_DIR" --upgrade --quiet --platform manylinux2014_x86_64 --implementation cp --python-version 3.12 --only-binary=:all:
 
 # Remove unnecessary files to reduce package size
 echo "  Removing unnecessary files..."
@@ -36,21 +36,31 @@ find "$PACKAGE_DIR" -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
 find "$PACKAGE_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 find "$PACKAGE_DIR" -type f -name "*.pyc" -delete
 find "$PACKAGE_DIR" -type f -name "*.pyo" -delete
-find "$PACKAGE_DIR" -type f -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
-find "$PACKAGE_DIR" -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+# Keep opentelemetry dist-info for metadata
+find "$PACKAGE_DIR" -type d -name "*.dist-info" ! -name "opentelemetry*" -exec rm -rf {} + 2>/dev/null || true
+find "$PACKAGE_DIR" -type d -name "*.egg-info" ! -name "opentelemetry*" -exec rm -rf {} + 2>/dev/null || true
+
+# Remove additional unnecessary files
+echo "  Removing additional bloat..."
+rm -rf "$PACKAGE_DIR"/boto3* "$PACKAGE_DIR"/botocore* "$PACKAGE_DIR"/s3transfer* 2>/dev/null || true
+find "$PACKAGE_DIR" -type f -name "*.so" -exec strip {} \; 2>/dev/null || true
+find "$PACKAGE_DIR" -name "*.md" -delete 2>/dev/null || true
+find "$PACKAGE_DIR" -name "*.txt" ! -name "requirements.txt" -delete 2>/dev/null || true
+find "$PACKAGE_DIR" -name "*.rst" -delete 2>/dev/null || true
 
 echo "✓ Dependencies installed"
 echo ""
 
 # Step 3: Copy source code
 echo -e "${YELLOW}[3/5] Copying source code...${NC}"
-cp -r src/ "$PACKAGE_DIR/"
+# Copy contents of src folder to package root (flatten structure for Lambda imports)
+cp -r src/* "$PACKAGE_DIR/"
 echo "✓ Source code copied"
 echo ""
 
 # Step 4: Verify Strands SDK inclusion
-echo -e "${YELLOW}[4/5] Verifying Strands SDK...${NC}"
-if [ -d "$PACKAGE_DIR/strands_agents" ] || [ -d "$PACKAGE_DIR/strands-agents" ]; then
+echo -e "${YELLOW}[4/6] Verifying Strands SDK...${NC}"
+if [ -d "$PACKAGE_DIR/strands_agents" ] || [ -d "$PACKAGE_DIR/strands" ]; then
     echo "✓ Strands SDK found in package"
 else
     echo -e "${RED}✗ WARNING: Strands SDK not found in package${NC}"
@@ -58,8 +68,19 @@ else
 fi
 echo ""
 
+# Step 4.5: Fix OpenTelemetry StopIteration bug for Python 3.12
+echo -e "${YELLOW}[5/6] Fixing OpenTelemetry Python 3.12 compatibility...${NC}"
+OTEL_CONTEXT_FILE="$PACKAGE_DIR/opentelemetry/context/__init__.py"
+
+if [ -f "$OTEL_CONTEXT_FILE" ]; then
+    python3 scripts/fix_opentelemetry_context.py "$OTEL_CONTEXT_FILE"
+else
+    echo "  OpenTelemetry context not found, skipping patch"
+fi
+echo ""
+
 # Step 5: Create deployment package
-echo -e "${YELLOW}[5/5] Creating deployment package...${NC}"
+echo -e "${YELLOW}[6/6] Creating deployment package...${NC}"
 cd "$PACKAGE_DIR"
 zip -r "../../$OUTPUT_ZIP" . -q
 cd ../..

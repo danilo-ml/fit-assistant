@@ -7,8 +7,8 @@ conversation state in DynamoDB with TTL-based expiration and message history.
 
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, Literal
-from src.models.dynamodb_client import DynamoDBClient
-from src.models.entities import ConversationState, MessageHistoryEntry
+from models.dynamodb_client import DynamoDBClient
+from models.entities import ConversationState, MessageHistoryEntry
 
 
 class ConversationStateManager:

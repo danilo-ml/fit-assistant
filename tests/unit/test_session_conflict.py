@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock
 
 from src.services.session_conflict import SessionConflictDetector
+from src.models.dynamodb_client import DynamoDBClient
 
 
 @pytest.fixture

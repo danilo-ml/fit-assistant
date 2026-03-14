@@ -235,7 +235,8 @@ docker-compose up -d
 
 # Send test message to SQS
 aws --endpoint-url=http://localhost:4566 sqs send-message \
-  --queue-url http://localhost:4566/000000000000/fitagent-messages \
+  --queue-url http://localhost:4566/000000000000/fitagent-messages.fifo \
+  --message-group-id "test-group" \
   --message-body '{"message_sid":"SM123","from":"+1234567890","body":"Hello"}'
 
 # Check Lambda logs

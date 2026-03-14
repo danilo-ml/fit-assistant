@@ -6,8 +6,8 @@ Provides methods for sending WhatsApp messages and validating webhook signatures
 from typing import Optional
 from twilio.rest import Client
 from twilio.request_validator import RequestValidator
-from src.config import settings
-from src.utils.logging import get_logger
+from config import settings
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -35,9 +35,16 @@ class TwilioClient:
             auth_token: Twilio auth token (defaults to settings)
             whatsapp_number: Twilio WhatsApp number (defaults to settings)
         """
-        self.account_sid = account_sid or settings.twilio_account_sid
-        self.auth_token = auth_token or settings.twilio_auth_token
-        self.whatsapp_number = whatsapp_number or settings.twilio_whatsapp_number
+        # Get credentials from Secrets Manager or environment variables
+        if account_sid is None or auth_token is None or whatsapp_number is None:
+            creds = settings.get_twilio_credentials()
+            self.account_sid = account_sid or creds['account_sid']
+            self.auth_token = auth_token or creds['auth_token']
+            self.whatsapp_number = whatsapp_number or creds['whatsapp_number']
+        else:
+            self.account_sid = account_sid
+            self.auth_token = auth_token
+            self.whatsapp_number = whatsapp_number
         
         # Initialize Twilio client
         self.client = Client(self.account_sid, self.auth_token)

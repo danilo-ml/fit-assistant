@@ -1,15 +1,22 @@
 """
-Message processor Lambda function for processing WhatsApp messages from SQS.
+Message processor Lambda function for processing WhatsApp messages from SQS FIFO queue.
 
-This handler is triggered by SQS and processes messages by:
-1. Extracting message from SQS event records
+This handler is triggered by SQS FIFO queue and processes messages by:
+1. Extracting message from SQS event records (batch size 1 for FIFO)
 2. Using MessageRouter to identify user and get handler type
 3. Routing to appropriate handler (OnboardingHandler, TrainerHandler, StudentHandler)
 4. Sending response via TwilioClient within 10 seconds
 5. Handling failures with SQS retry mechanism (3 attempts with exponential backoff)
 
+Messages from the same phone number (MessageGroupId) are processed sequentially in arrival
+order to maintain conversational context. Messages from different phone numbers can still
+be processed in parallel.
+
 Requirements: 13.4, 13.5, 13.6, 13.7
 """
+
+# CRITICAL: Import patch first to fix OpenTelemetry issues
+import lambda_patch  # noqa: F401
 
 import json
 import time
@@ -17,20 +24,19 @@ from datetime import datetime
 from typing import Dict, Any, List
 import boto3
 from botocore.exceptions import ClientError
+from pydantic import ValidationError
 
-from src.services.message_router import MessageRouter, HandlerType
-from src.services.twilio_client import TwilioClient
-from src.services.conversation_handlers import (
+from services.message_router import MessageRouter, HandlerType
+from services.twilio_client import TwilioClient
+from services.conversation_handlers import (
     OnboardingHandler,
     TrainerHandler,
     StudentHandler,
 )
-from src.services.feature_flags import is_multi_agent_enabled
-from src.services.swarm_orchestrator import get_swarm_orchestrator
-from src.services.ai_agent import AIAgent
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.logging import get_logger
-from src.config import settings
+from services.strands_agent_service import get_strands_agent_service
+from models.dynamodb_client import DynamoDBClient
+from utils.logging import get_logger
+from config import settings
 
 logger = get_logger(__name__)
 
@@ -52,11 +58,15 @@ sqs_client = boto3.client(
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Lambda handler for processing WhatsApp messages from SQS.
+    Lambda handler for processing WhatsApp messages from SQS FIFO queue.
 
-    Processes messages in batch from SQS, routes to appropriate handlers,
-    and sends responses via Twilio. Failed messages are automatically retried
-    by SQS (3 attempts with exponential backoff) and moved to DLQ after retries.
+    Processes messages sequentially per phone number (MessageGroupId) from SQS FIFO queue,
+    routes to appropriate handlers, and sends responses via Twilio. Messages from the same
+    phone number are processed in strict order to maintain conversational context. Messages
+    from different phone numbers can still be processed in parallel.
+
+    Failed messages are automatically retried by SQS (3 attempts with exponential backoff)
+    and moved to DLQ after retries.
 
     Args:
         event: SQS event containing message records
@@ -73,10 +83,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "receiptHandle": "receipt-handle",
                     "body": "{\"message_sid\": \"SM123\", \"from\": \"+1234567890\", ...}",
                     "attributes": {
-                        "ApproximateReceiveCount": "1"
+                        "ApproximateReceiveCount": "1",
+                        "MessageGroupId": "+1234567890"
                     },
                     "messageAttributes": {
-                        "request_id": {"stringValue": "abc-123"}
+                        "request_id": {"stringValue": "abc-123"},
+                        "phone_number": {"stringValue": "+1234567890"}
                     }
                 }
             ]
@@ -96,19 +108,23 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         message_id = record.get("messageId", "unknown")
         receipt_handle = record.get("receiptHandle", "")
         
-        # Extract request_id from message attributes
+        # Extract request_id and phone_number from message attributes
         message_attributes = record.get("messageAttributes", {})
         request_id = (
             message_attributes.get("request_id", {}).get("stringValue", "unknown")
+        )
+        phone_number_attr = (
+            message_attributes.get("phone_number", {}).get("stringValue", "")
         )
         
         # Get retry count
         receive_count = int(record.get("attributes", {}).get("ApproximateReceiveCount", 1))
 
         logger.info(
-            "Processing SQS record",
+            "Processing SQS record from FIFO queue",
             message_id=message_id,
             request_id=request_id,
+            message_group_id=phone_number_attr,
             receive_count=receive_count,
         )
 
@@ -166,9 +182,73 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     elapsed_seconds=round(elapsed_time, 2),
                 )
 
-        except Exception as e:
+        except json.JSONDecodeError as e:
+            # JSON parsing errors - invalid message format, don't retry
             logger.error(
-                "Message processing failed",
+                "Invalid JSON in message body, skipping retry",
+                message_id=message_id,
+                request_id=request_id,
+                phone_number=phone_number_attr,
+                error=str(e),
+                error_type="JSONDecodeError",
+            )
+            # Don't add to batch_item_failures - message will be deleted
+            
+        except ValidationError as e:
+            # Pydantic validation errors - invalid user input, don't retry
+            logger.error(
+                "Pydantic validation error in message processing, skipping retry",
+                message_id=message_id,
+                request_id=request_id,
+                phone_number=phone_number_attr,
+                receive_count=receive_count,
+                error=str(e),
+                error_type="ValidationError",
+                validation_errors=e.errors() if hasattr(e, 'errors') else None,
+            )
+            # Don't add to batch_item_failures - message will be deleted
+            
+        except ValueError as e:
+            # Standard validation errors - invalid user input, don't retry
+            logger.error(
+                "Validation error in message processing, skipping retry",
+                message_id=message_id,
+                request_id=request_id,
+                phone_number=phone_number_attr,
+                receive_count=receive_count,
+                error=str(e),
+                error_type="ValueError",
+            )
+            # Don't add to batch_item_failures - message will be deleted
+            
+        except ClientError as e:
+            # AWS service errors - may be transient, allow retry
+            logger.error(
+                "AWS service error, will retry",
+                message_id=message_id,
+                request_id=request_id,
+                receive_count=receive_count,
+                error=str(e),
+                error_type="ClientError",
+                error_code=e.response.get('Error', {}).get('Code', 'Unknown'),
+            )
+            
+            # Add to batch item failures for SQS retry
+            batch_item_failures.append({"itemIdentifier": message_id})
+            
+            # Log if this is the final retry attempt
+            if receive_count >= 3:
+                logger.error(
+                    "AWS service error persisted after maximum retries, moving to DLQ",
+                    message_id=message_id,
+                    request_id=request_id,
+                    receive_count=receive_count,
+                )
+                
+        except Exception as e:
+            # Unexpected errors - log and allow retry
+            logger.error(
+                "Unexpected error in message processing, will retry",
                 message_id=message_id,
                 request_id=request_id,
                 receive_count=receive_count,
@@ -398,7 +478,7 @@ def _process_message(
     if handler_type == HandlerType.ONBOARDING:
         response_text = _handle_onboarding(phone_number, message_body, request_id)
     elif handler_type == HandlerType.TRAINER:
-        response_text = _handle_trainer(user_id, user_data, message_body, request_id)
+        response_text = _handle_trainer(user_id, user_data, message_body, request_id, phone_number)
     elif handler_type == HandlerType.STUDENT:
         response_text = _handle_student(user_id, user_data, message_body, request_id)
     else:
@@ -447,67 +527,58 @@ def _handle_trainer(
     user_data: Dict[str, Any],
     message_body: Dict[str, Any],
     request_id: str,
+    phone_number: str = None,
 ) -> str:
     """
-    Handle trainer messages with AI agent (single or multi-agent).
+    Handle trainer messages with Strands Agent Service.
 
-    Checks feature flag to determine whether to use:
-    - Multi-agent architecture (SwarmOrchestrator with specialized agents)
-    - Single-agent architecture (AIAgent with all tools)
+    Uses StrandsAgentService to process trainer messages with a single agent
+    that has all FitAgent tools (student, session, payment management).
 
     Args:
         trainer_id: Trainer's unique identifier
         user_data: Trainer's user record from DynamoDB
         message_body: Message payload
         request_id: Request ID for tracing
+        phone_number: Phone number for logging
 
     Returns:
-        Response text from AI agent
+        Response text from AI agent in PT-BR
     """
     logger.info(
-        "Processing trainer message",
+        "Processing trainer message with Strands Agent",
         trainer_id=trainer_id,
         request_id=request_id,
+        phone_number=phone_number,
     )
     
-    # Check if multi-agent is enabled for this trainer
-    if is_multi_agent_enabled(trainer_id):
+    # Get Strands Agent Service
+    agent_service = get_strands_agent_service()
+    
+    # Process message through agent
+    result = agent_service.process_message(
+        trainer_id=trainer_id,
+        message=message_body.get("body", ""),
+        phone_number=phone_number
+    )
+    
+    # Handle result
+    if result.get('success'):
         logger.info(
-            "Using multi-agent architecture",
+            "Trainer message processed successfully",
             trainer_id=trainer_id,
-        )
-        
-        # Use SwarmOrchestrator
-        orchestrator = get_swarm_orchestrator()
-        result = orchestrator.process_message(
-            trainer_id=trainer_id,
-            message=message_body.get("body", ""),
-            conversation_history=None,  # TODO: Load from conversation state
-        )
-        
-        if result.get('success'):
-            return result.get('response', 'I processed your request.')
-        else:
-            error_msg = result.get('error', 'unknown error')
-            logger.error(
-                "Multi-agent processing failed",
-                trainer_id=trainer_id,
-                error=error_msg,
-            )
-            return result.get('response', 'Sorry, I encountered an error processing your request.')
-    else:
-        logger.info(
-            "Using single-agent architecture",
-            trainer_id=trainer_id,
-        )
-        
-        # Use existing TrainerHandler with single AIAgent
-        return trainer_handler.handle_message(
-            trainer_id=trainer_id,
-            user_data=user_data,
-            message_body=message_body,
             request_id=request_id,
         )
+        return result.get('response', 'Mensagem processada com sucesso.')
+    else:
+        error_msg = result.get('error', 'Erro desconhecido')
+        logger.error(
+            "Trainer message processing failed",
+            trainer_id=trainer_id,
+            request_id=request_id,
+            error=error_msg,
+        )
+        return result.get('error', 'Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.')
 
 
 def _handle_student(

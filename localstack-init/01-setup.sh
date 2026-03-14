@@ -76,32 +76,36 @@ echo "✓ S3 bucket created with encryption"
 # Create SQS queues
 echo "Creating SQS queues..."
 
-# Dead letter queue
+# Dead letter queue (FIFO)
 awslocal sqs create-queue \
-    --queue-name fitagent-messages-dlq \
+    --queue-name fitagent-messages-dlq.fifo \
+    --attributes '{"FifoQueue":"true","ContentBasedDeduplication":"false"}' \
     --region us-east-1
 
 DLQ_ARN=$(awslocal sqs get-queue-attributes \
-    --queue-url http://localhost:4566/000000000000/fitagent-messages-dlq \
+    --queue-url http://localhost:4566/000000000000/fitagent-messages-dlq.fifo \
     --attribute-names QueueArn \
     --region us-east-1 \
     --query 'Attributes.QueueArn' \
     --output text)
 
-# Main message queue with DLQ
+# Main message queue with DLQ (FIFO)
 awslocal sqs create-queue \
-    --queue-name fitagent-messages \
+    --queue-name fitagent-messages.fifo \
     --attributes "{
-        \"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"
+        \"FifoQueue\":\"true\",
+        \"ContentBasedDeduplication\":\"false\",
+        \"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_ARN}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"
     }" \
     --region us-east-1
 
-# Notification queue
+# Notification queue (FIFO)
 awslocal sqs create-queue \
-    --queue-name fitagent-notifications \
+    --queue-name fitagent-notifications.fifo \
+    --attributes '{"FifoQueue":"true","ContentBasedDeduplication":"false"}' \
     --region us-east-1
 
-echo "✓ SQS queues created"
+echo "✓ SQS FIFO queues created"
 
 # Create KMS key for encryption
 echo "Creating KMS key for OAuth token encryption..."
@@ -147,7 +151,7 @@ echo ""
 echo "Resources created:"
 echo "  - DynamoDB table: fitagent-main"
 echo "  - S3 bucket: fitagent-receipts-local"
-echo "  - SQS queues: fitagent-messages, fitagent-notifications, fitagent-messages-dlq"
+echo "  - SQS FIFO queues: fitagent-messages.fifo, fitagent-notifications.fifo, fitagent-messages-dlq.fifo"
 echo "  - KMS key: alias/fitagent-oauth-key"
 echo "  - Secrets Manager: fitagent/twilio, fitagent/google-oauth, fitagent/outlook-oauth"
 echo ""

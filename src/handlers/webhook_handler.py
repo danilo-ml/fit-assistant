@@ -11,9 +11,9 @@ import json
 from typing import Dict, Any
 import boto3
 from botocore.exceptions import ClientError
-from src.services.twilio_client import TwilioClient
-from src.utils.logging import get_logger
-from src.config import settings
+from services.twilio_client import TwilioClient
+from utils.logging import get_logger
+from config import settings
 
 logger = get_logger(__name__)
 
@@ -68,9 +68,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # Parse form-encoded body
         params = _parse_form_body(body)
 
-        # Extract phone number for logging
-        from_number = params.get("From", "").replace("whatsapp:", "")
+        # Extract phone number and ensure E.164 format
+        # Twilio sends "whatsapp: 5511940044117" or "whatsapp:+5511940044117"
+        from_number = params.get("From", "").replace("whatsapp:", "").strip()
+        
+        # Add + prefix if missing (E.164 format requirement)
+        if from_number and not from_number.startswith("+"):
+            from_number = "+" + from_number
+            
         message_sid = params.get("MessageSid", "unknown")
+        
+        logger.info(
+            "Raw phone number from Twilio",
+            request_id=request_id,
+            raw_from=params.get("From", ""),
+            parsed_from=from_number,
+        )
 
         logger.info(
             "Processing webhook",
@@ -80,37 +93,47 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             has_media=int(params.get("NumMedia", 0)) > 0,
         )
 
-        # Validate Twilio signature
-        signature = headers.get("X-Twilio-Signature") or headers.get("x-twilio-signature")
-        if not signature:
+        # Validate Twilio signature (skip in local development if configured)
+        if settings.environment == "local" and settings.skip_twilio_signature_validation:
             logger.warning(
-                "Missing Twilio signature", request_id=request_id, message_sid=message_sid
+                "Skipping Twilio signature validation (local development mode)",
+                request_id=request_id,
+                message_sid=message_sid
             )
-            return _error_response(400, "Missing X-Twilio-Signature header")
+        else:
+            signature = headers.get("X-Twilio-Signature") or headers.get("x-twilio-signature")
+            if not signature:
+                logger.warning(
+                    "Missing Twilio signature", request_id=request_id, message_sid=message_sid
+                )
+                return _error_response(400, "Missing X-Twilio-Signature header")
 
-        # Reconstruct full URL for signature validation
-        url = _reconstruct_url(event)
+            # Reconstruct full URL for signature validation
+            url = _reconstruct_url(event)
+            
+            is_valid = twilio_client.validate_signature(url, params, signature)
 
-        # Validate signature
-        is_valid = twilio_client.validate_signature(url, params, signature)
+            if not is_valid:
+                logger.error(
+                    "Invalid Twilio signature", request_id=request_id, message_sid=message_sid, url=url
+                )
+                return _error_response(403, "Invalid Twilio signature")
 
-        if not is_valid:
-            logger.error(
-                "Invalid Twilio signature", request_id=request_id, message_sid=message_sid, url=url
+            logger.info(
+                "Twilio signature validated successfully",
+                request_id=request_id,
+                message_sid=message_sid,
             )
-            return _error_response(403, "Invalid Twilio signature")
-
-        logger.info(
-            "Twilio signature validated successfully",
-            request_id=request_id,
-            message_sid=message_sid,
-        )
 
         # Enqueue message to SQS
+        to_number = params.get("To", "").replace("whatsapp:", "").strip()
+        if to_number and not to_number.startswith("+"):
+            to_number = "+" + to_number
+            
         message_body = {
             "message_sid": message_sid,
             "from": from_number,
-            "to": params.get("To", "").replace("whatsapp:", ""),
+            "to": to_number,
             "body": params.get("Body", ""),
             "num_media": int(params.get("NumMedia", 0)),
             "media_urls": _extract_media_urls(params),
@@ -181,17 +204,33 @@ def _reconstruct_url(event: Dict[str, Any]) -> str:
     headers = event.get("headers", {})
     request_context = event.get("requestContext", {})
 
-    # Get protocol (default to https)
-    protocol = headers.get("X-Forwarded-Proto", "https")
+    # Get protocol - prioritize X-Forwarded-Proto for ngrok/proxy scenarios
+    protocol = (
+        headers.get("x-forwarded-proto") 
+        or headers.get("X-Forwarded-Proto") 
+        or "https"
+    )
 
-    # Get domain
-    domain = request_context.get("domainName") or headers.get("Host", "")
+    # Get domain - use Host header which contains the actual domain (including ngrok)
+    domain = (
+        headers.get("host") 
+        or headers.get("Host") 
+        or request_context.get("domainName", "")
+    )
 
     # Get path
     path = request_context.get("path", "/webhook")
 
     # Construct full URL
     url = f"{protocol}://{domain}{path}"
+    
+    logger.info(
+        "Reconstructed URL for signature validation",
+        url=url,
+        protocol=protocol,
+        domain=domain,
+        path=path
+    )
 
     return url
 
@@ -225,7 +264,10 @@ def _extract_media_urls(params: Dict[str, str]) -> list:
 
 def _enqueue_to_sqs(message_body: Dict[str, Any], request_id: str) -> None:
     """
-    Enqueue message to SQS for async processing.
+    Enqueue message to SQS FIFO queue for async processing.
+
+    Uses MessageGroupId (phone number) to ensure sequential processing per user.
+    Uses MessageDeduplicationId (message_sid) to prevent duplicate processing.
 
     Args:
         message_body: Message payload to enqueue
@@ -235,22 +277,41 @@ def _enqueue_to_sqs(message_body: Dict[str, Any], request_id: str) -> None:
         ClientError: If SQS enqueue fails
     """
     try:
-        response = sqs_client.send_message(
-            QueueUrl=settings.sqs_queue_url,
-            MessageBody=json.dumps(message_body),
-            MessageAttributes={
+        # Extract phone number for message group ID (ensures ordering per user)
+        phone_number = message_body.get("from", "")
+        message_sid = message_body.get("message_sid", "unknown")
+        
+        # Sanitize phone number for MessageGroupId (alphanumeric only)
+        # Remove +, -, and spaces but keep the original phone_number in message_body
+        message_group_id = phone_number.replace("+", "").replace("-", "").replace(" ", "")
+        
+        # Prepare SQS message parameters
+        sqs_params = {
+            "QueueUrl": settings.sqs_queue_url,
+            "MessageBody": json.dumps(message_body),
+            "MessageGroupId": message_group_id,  # Groups messages by phone number for ordering
+            "MessageDeduplicationId": message_sid,  # Prevents duplicate processing
+            "MessageAttributes": {
                 "request_id": {"StringValue": request_id, "DataType": "String"},
                 "message_sid": {
-                    "StringValue": message_body.get("message_sid", "unknown"),
+                    "StringValue": message_sid,
+                    "DataType": "String",
+                },
+                "phone_number": {
+                    "StringValue": phone_number,
                     "DataType": "String",
                 },
             },
-        )
+        }
+
+        response = sqs_client.send_message(**sqs_params)
 
         logger.info(
-            "Message sent to SQS",
+            "Message sent to SQS FIFO queue",
             request_id=request_id,
             message_id=response.get("MessageId"),
+            message_group_id=message_group_id,
+            message_deduplication_id=message_sid,
             queue_url=settings.sqs_queue_url,
         )
 

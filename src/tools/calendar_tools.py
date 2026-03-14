@@ -17,9 +17,9 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 import urllib.parse
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.validation import InputSanitizer
-from src.config import settings
+from models.dynamodb_client import DynamoDBClient
+from utils.validation import InputSanitizer
+from config import settings
 
 # Initialize DynamoDB client
 dynamodb_client = DynamoDBClient(
@@ -101,19 +101,21 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
 
         # Check if OAuth credentials are configured for this provider
         if provider == "google":
-            if not settings.google_client_id or not settings.google_client_secret:
+            creds = settings.get_google_oauth_credentials()
+            if not creds["client_id"] or not creds["client_secret"]:
                 return {
                     "success": False,
                     "error": "Google Calendar integration is not configured. Please contact support.",
                 }
-            client_id = settings.google_client_id
+            client_id = creds["client_id"]
         else:  # outlook
-            if not settings.outlook_client_id or not settings.outlook_client_secret:
+            creds = settings.get_outlook_oauth_credentials()
+            if not creds["client_id"] or not creds["client_secret"]:
                 return {
                     "success": False,
                     "error": "Outlook Calendar integration is not configured. Please contact support.",
                 }
-            client_id = settings.outlook_client_id
+            client_id = creds["client_id"]
 
         # Generate unique state token for OAuth security
         state_token = uuid4().hex
@@ -134,7 +136,7 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
             "ttl": ttl,
         }
 
-        dynamodb_client.dynamodb.put_item(TableName=settings.dynamodb_table, Item=state_item)
+        dynamodb_client.put_item(state_item)
 
         # Construct OAuth2 authorization URL based on provider
         if provider == "google":

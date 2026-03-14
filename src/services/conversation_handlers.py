@@ -7,7 +7,7 @@ This module implements three handler classes:
 - StudentHandler: Handles student menu and session viewing
 
 Each handler processes messages based on user type and conversation state,
-integrating with the AIAgent for natural language understanding and tool execution.
+integrating with StrandsAgentService for natural language understanding and tool execution.
 
 Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 7.1, 7.2, 7.3, 7.4, 7.5
 """
@@ -16,13 +16,13 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
 
-from src.services.ai_agent import AIAgent
-from src.services.conversation_state import ConversationStateManager
-from src.models.dynamodb_client import DynamoDBClient
-from src.models.entities import Trainer, Student
-from src.utils.logging import get_logger
-from src.utils.validation import PhoneNumberValidator
-from src.config import settings
+from services.strands_agent_service import StrandsAgentService
+from services.conversation_state import ConversationStateManager
+from models.dynamodb_client import DynamoDBClient
+from models.entities import Trainer, Student
+from utils.logging import get_logger
+from utils.validation import PhoneNumberValidator
+from config import settings
 
 logger = get_logger(__name__)
 
@@ -88,7 +88,7 @@ class OnboardingHandler:
         message_text = message_body.get("body", "").strip().lower()
         
         # Check if this is the first message (no state)
-        if not state or state.get("state") == "UNKNOWN":
+        if not state or state.state == "UNKNOWN":
             # Send welcome message
             response = self._send_welcome_message()
             
@@ -103,7 +103,7 @@ class OnboardingHandler:
             return response
         
         # Get current onboarding step
-        context = state.get("context", {})
+        context = state.context
         step = context.get("step", "user_type")
         
         # Process based on current step
@@ -131,12 +131,12 @@ class OnboardingHandler:
     def _send_welcome_message(self) -> str:
         """Send initial welcome message."""
         return (
-            "Welcome to FitAgent! 👋\n\n"
-            "I'm your AI assistant for managing training sessions and students.\n\n"
-            "Are you a:\n"
+            "Bem-vindo ao FitAgent! 👋\n\n"
+            "Sou seu assistente de IA para gerenciar sessões de treino e alunos.\n\n"
+            "Você é:\n"
             "1️⃣ Personal Trainer\n"
-            "2️⃣ Student\n\n"
-            "Please reply with 1 or 2 to get started."
+            "2️⃣ Aluno\n\n"
+            "Por favor, responda com 1 ou 2 para começar."
         )
     
     def _handle_user_type_selection(
@@ -156,26 +156,26 @@ class OnboardingHandler:
             )
             
             return (
-                "Great! Let's get you set up as a trainer. 💪\n\n"
-                "What's your full name?"
+                "Ótimo! Vamos configurar sua conta como trainer. 💪\n\n"
+                "Qual é o seu nome completo?"
             )
         
         # Check if user selected student
-        elif "2" in message_text or "student" in message_text:
+        elif "2" in message_text or "student" in message_text or "aluno" in message_text:
             # Students need to be registered by their trainer
             return (
-                "Thanks for your interest! 🙏\n\n"
-                "Students are registered by their trainers. Please ask your trainer "
-                "to add you to their roster, and they'll provide you with access.\n\n"
-                "If you're a trainer, please reply with '1' to register."
+                "Obrigado pelo seu interesse! 🙏\n\n"
+                "Alunos são registrados por seus trainers. Por favor, peça ao seu trainer "
+                "para adicioná-lo à lista de alunos, e ele fornecerá acesso.\n\n"
+                "Se você é um trainer, por favor responda com '1' para se registrar."
             )
         
         else:
             # Invalid response
             return (
-                "I didn't understand that. Please reply with:\n"
-                "1️⃣ for Personal Trainer\n"
-                "2️⃣ for Student"
+                "Não entendi isso. Por favor, responda com:\n"
+                "1️⃣ para Personal Trainer\n"
+                "2️⃣ para Aluno"
             )
     
     def _handle_trainer_name(
@@ -187,11 +187,11 @@ class OnboardingHandler:
         """Handle trainer name collection."""
         # Validate name (basic check)
         if len(message_text) < 2:
-            return "Please provide your full name (at least 2 characters)."
+            return "Por favor, forneça seu nome completo (pelo menos 2 caracteres)."
         
         # Store name and move to next step
         state = self.state_manager.get_state(phone_number)
-        context = state.get("context", {})
+        context = state.context
         context["trainer_name"] = message_text.title()
         context["step"] = "trainer_email"
         
@@ -201,7 +201,7 @@ class OnboardingHandler:
             context=context,
         )
         
-        return f"Nice to meet you, {context['trainer_name']}! 👋\n\nWhat's your email address?"
+        return f"Prazer em conhecê-lo, {context['trainer_name']}! 👋\n\nQual é o seu endereço de e-mail?"
     
     def _handle_trainer_email(
         self,
@@ -212,11 +212,11 @@ class OnboardingHandler:
         """Handle trainer email collection."""
         # Basic email validation
         if "@" not in message_text or "." not in message_text:
-            return "Please provide a valid email address (e.g., trainer@example.com)."
+            return "Por favor, forneça um endereço de e-mail válido (ex: trainer@example.com)."
         
         # Store email and move to next step
         state = self.state_manager.get_state(phone_number)
-        context = state.get("context", {})
+        context = state.context
         context["trainer_email"] = message_text.lower()
         context["step"] = "trainer_business"
         
@@ -226,7 +226,7 @@ class OnboardingHandler:
             context=context,
         )
         
-        return "Perfect! What's your business name? (This is how students will see you)"
+        return "Perfeito! Qual é o nome do seu negócio? (É assim que os alunos verão você)"
     
     def _handle_trainer_business(
         self,
@@ -237,11 +237,11 @@ class OnboardingHandler:
         """Handle trainer business name and complete registration."""
         # Validate business name
         if len(message_text) < 2:
-            return "Please provide your business name (at least 2 characters)."
+            return "Por favor, forneça o nome do seu negócio (pelo menos 2 caracteres)."
         
         # Get collected information
         state = self.state_manager.get_state(phone_number)
-        context = state.get("context", {})
+        context = state.context
         
         trainer_name = context.get("trainer_name")
         trainer_email = context.get("trainer_email")
@@ -258,14 +258,14 @@ class OnboardingHandler:
                     phone_number=phone_number,
                 )
                 return (
-                    "There was an issue with your phone number format. "
-                    "Please contact support for assistance."
+                    "Houve um problema com o formato do seu número de telefone. "
+                    "Por favor, entre em contato com o suporte para assistência."
                 )
         
         # Create trainer record
         try:
             trainer_id = str(uuid.uuid4())
-            now = datetime.utcnow().isoformat()
+            now = datetime.utcnow()
             
             trainer = Trainer(
                 trainer_id=trainer_id,
@@ -277,8 +277,8 @@ class OnboardingHandler:
                 updated_at=now,
             )
             
-            # Save to DynamoDB
-            self.dynamodb.put_trainer(trainer)
+            # Save to DynamoDB (use to_dynamodb() method for proper formatting)
+            self.dynamodb.put_trainer(trainer.to_dynamodb())
             
             logger.info(
                 "Trainer registered successfully",
@@ -298,14 +298,14 @@ class OnboardingHandler:
             
             # Send success message with menu
             return (
-                f"🎉 Welcome to FitAgent, {trainer_name}!\n\n"
-                f"Your account is now active. I can help you with:\n\n"
-                "📝 Register and manage students\n"
-                "📅 Schedule training sessions\n"
-                "💰 Track payments\n"
-                "🔔 Send notifications\n"
-                "📆 Connect your calendar (Google/Outlook)\n\n"
-                "What would you like to do? Just tell me in your own words!"
+                f"🎉 Bem-vindo ao FitAgent, {trainer_name}!\n\n"
+                f"Sua conta está ativa agora. Posso ajudá-lo com:\n\n"
+                "📝 Registrar e gerenciar alunos\n"
+                "📅 Agendar sessões de treino\n"
+                "💰 Rastrear pagamentos\n"
+                "🔔 Enviar notificações\n"
+                "📆 Conectar seu calendário (Google/Outlook)\n\n"
+                "O que você gostaria de fazer? Apenas me diga com suas próprias palavras!"
             )
         
         except Exception as e:
@@ -317,8 +317,8 @@ class OnboardingHandler:
             )
             
             return (
-                "I'm sorry, there was an error creating your account. "
-                "Please try again or contact support if the issue persists."
+                "Desculpe, houve um erro ao criar sua conta. "
+                "Por favor, tente novamente ou entre em contato com o suporte se o problema persistir."
             )
 
 
@@ -327,7 +327,7 @@ class TrainerHandler:
     Handles trainer messages with AI agent integration.
     
     This handler:
-    - Uses AIAgent for natural language understanding
+    - Uses StrandsAgentService for natural language understanding
     - Executes tool functions based on trainer requests
     - Maintains conversation context across interactions
     - Provides trainer menu and capabilities
@@ -337,7 +337,7 @@ class TrainerHandler:
     
     def __init__(
         self,
-        ai_agent: Optional[AIAgent] = None,
+        agent_service: Optional[StrandsAgentService] = None,
         state_manager: Optional[ConversationStateManager] = None,
         dynamodb_client: Optional[DynamoDBClient] = None,
     ):
@@ -345,11 +345,11 @@ class TrainerHandler:
         Initialize TrainerHandler.
         
         Args:
-            ai_agent: AI agent for natural language processing
+            agent_service: Strands agent service for natural language processing
             state_manager: Conversation state manager
             dynamodb_client: DynamoDB client for data operations
         """
-        self.ai_agent = ai_agent or AIAgent()
+        self.agent_service = agent_service or StrandsAgentService()
         self.dynamodb = dynamodb_client or DynamoDBClient(
             table_name=settings.dynamodb_table,
             endpoint_url=settings.aws_endpoint_url,
@@ -364,7 +364,7 @@ class TrainerHandler:
         request_id: str,
     ) -> str:
         """
-        Handle trainer message with AI agent.
+        Handle trainer message with Strands agent service.
         
         Args:
             trainer_id: Trainer's unique identifier
@@ -373,7 +373,7 @@ class TrainerHandler:
             request_id: Request ID for tracing
         
         Returns:
-            Response text from AI agent
+            Response text from Strands agent
         """
         logger.info(
             "Processing trainer message",
@@ -384,29 +384,12 @@ class TrainerHandler:
         phone_number = user_data.get("phone_number")
         message_text = message_body.get("body", "").strip()
         
-        # Get conversation state for history
-        state = self.state_manager.get_state(phone_number)
-        conversation_history = []
-        
-        if state:
-            # Extract message history for AI context
-            message_history = state.get("message_history", [])
-            # Convert to Bedrock format (last 5 messages for context)
-            for msg in message_history[-5:]:
-                role = msg.get("role")
-                content = msg.get("content", "")
-                if role and content:
-                    conversation_history.append({
-                        "role": role,
-                        "content": [{"text": content}]
-                    })
-        
-        # Process message with AI agent
+        # Process message with Strands agent service
         try:
-            result = self.ai_agent.process_message(
+            result = self.agent_service.process_message(
                 trainer_id=trainer_id,
                 message=message_text,
-                conversation_history=conversation_history,
+                phone_number=phone_number,
             )
             
             if result.get("success"):
@@ -433,25 +416,24 @@ class TrainerHandler:
                 logger.info(
                     "Trainer message processed successfully",
                     trainer_id=trainer_id,
-                    tool_calls=len(result.get("tool_calls", [])),
                     request_id=request_id,
                 )
                 
                 return response_text
             
             else:
-                # AI agent returned error
+                # Strands agent service returned error
                 error_message = result.get("error", "Unknown error")
                 logger.error(
-                    "AI agent returned error",
+                    "Strands agent service returned error",
                     trainer_id=trainer_id,
                     error=error_message,
                     request_id=request_id,
                 )
                 
                 return (
-                    "I'm having trouble processing your request right now. "
-                    "Please try again or rephrase your message."
+                    "Estou tendo problemas para processar sua solicitação agora. "
+                    "Por favor, tente novamente ou reformule sua mensagem."
                 )
         
         except Exception as e:
@@ -463,8 +445,8 @@ class TrainerHandler:
             )
             
             return (
-                "Something went wrong while processing your request. "
-                "Please try again in a moment."
+                "Algo deu errado ao processar sua solicitação. "
+                "Por favor, tente novamente em alguns instantes."
             )
 
 
@@ -546,12 +528,12 @@ class StudentHandler:
     def _send_student_menu(self, student_name: str) -> str:
         """Send student menu with available options."""
         return (
-            f"Hi {student_name}! 👋\n\n"
-            "I can help you with:\n\n"
-            "📅 View upcoming sessions\n"
-            "✅ Confirm attendance\n"
-            "❌ Cancel attendance\n\n"
-            "What would you like to do?"
+            f"Olá {student_name}! 👋\n\n"
+            "Posso ajudá-lo com:\n\n"
+            "📅 Ver próximas sessões\n"
+            "✅ Confirmar presença\n"
+            "❌ Cancelar presença\n\n"
+            "O que você gostaria de fazer?"
         )
     
     def _view_upcoming_sessions(
@@ -579,17 +561,17 @@ class StudentHandler:
             
             if not sessions:
                 return (
-                    f"Hi {student_name}! 👋\n\n"
-                    "You don't have any upcoming sessions scheduled in the next 30 days.\n\n"
-                    "Contact your trainer to schedule a session!"
+                    f"Olá {student_name}! 👋\n\n"
+                    "Você não tem sessões agendadas nos próximos 30 dias.\n\n"
+                    "Entre em contato com seu trainer para agendar uma sessão!"
                 )
             
             # Format sessions in chronological order
-            response = f"Hi {student_name}! 👋\n\nYour upcoming sessions:\n\n"
+            response = f"Olá {student_name}! 👋\n\nSuas próximas sessões:\n\n"
             
             for i, session in enumerate(sessions, 1):
                 session_datetime = datetime.fromisoformat(session.get("session_datetime"))
-                trainer_name = session.get("trainer_name", "Your trainer")
+                trainer_name = session.get("trainer_name", "Seu trainer")
                 location = session.get("location", "")
                 duration = session.get("duration_minutes", 60)
                 status = session.get("status", "scheduled")
@@ -599,21 +581,21 @@ class StudentHandler:
                 date_str = session_datetime.strftime("%A, %B %d")
                 time_str = session_datetime.strftime("%I:%M %p")
                 
-                response += f"{i}. {date_str} at {time_str}\n"
+                response += f"{i}. {date_str} às {time_str}\n"
                 response += f"   Trainer: {trainer_name}\n"
-                response += f"   Duration: {duration} minutes\n"
+                response += f"   Duração: {duration} minutos\n"
                 
                 if location:
-                    response += f"   Location: {location}\n"
+                    response += f"   Local: {location}\n"
                 
                 if confirmed:
-                    response += "   ✅ Confirmed\n"
+                    response += "   ✅ Confirmado\n"
                 elif status == "scheduled":
-                    response += "   ⏳ Pending confirmation\n"
+                    response += "   ⏳ Aguardando confirmação\n"
                 
                 response += "\n"
             
-            response += "Reply 'confirm' to confirm attendance or 'cancel' to cancel a session."
+            response += "Responda 'confirmar' para confirmar presença ou 'cancelar' para cancelar uma sessão."
             
             logger.info(
                 "Student sessions retrieved",
@@ -633,8 +615,8 @@ class StudentHandler:
             )
             
             return (
-                "I'm having trouble retrieving your sessions right now. "
-                "Please try again in a moment."
+                "Estou tendo problemas para recuperar suas sessões agora. "
+                "Por favor, tente novamente em alguns instantes."
             )
     
     def _handle_confirmation(
@@ -664,8 +646,8 @@ class StudentHandler:
             
             if not sessions:
                 return (
-                    "You don't have any upcoming sessions to confirm. "
-                    "Contact your trainer to schedule a session!"
+                    "Você não tem sessões futuras para confirmar. "
+                    "Entre em contato com seu trainer para agendar uma sessão!"
                 )
             
             # Find the next unconfirmed session
@@ -677,8 +659,8 @@ class StudentHandler:
             
             if not unconfirmed_session:
                 return (
-                    "All your upcoming sessions are already confirmed! ✅\n\n"
-                    "If you need to make changes, please contact your trainer."
+                    "Todas as suas próximas sessões já estão confirmadas! ✅\n\n"
+                    "Se precisar fazer alterações, por favor entre em contato com seu trainer."
                 )
             
             # Update session with confirmation
@@ -708,10 +690,10 @@ class StudentHandler:
             )
             
             return (
-                f"✅ Attendance confirmed!\n\n"
-                f"Session: {date_str} at {time_str}\n"
+                f"✅ Presença confirmada!\n\n"
+                f"Sessão: {date_str} às {time_str}\n"
                 f"Trainer: {trainer_name}\n\n"
-                f"See you there! 💪"
+                f"Te vejo lá! 💪"
             )
         
         except Exception as e:
@@ -723,8 +705,8 @@ class StudentHandler:
             )
             
             return (
-                "I'm having trouble confirming your attendance right now. "
-                "Please try again in a moment."
+                "Estou tendo problemas para confirmar sua presença agora. "
+                "Por favor, tente novamente em alguns instantes."
             )
     
     def _handle_cancellation(
@@ -753,8 +735,8 @@ class StudentHandler:
             
             if not sessions:
                 return (
-                    "You don't have any upcoming sessions to cancel. "
-                    "If you need to make changes, please contact your trainer."
+                    "Você não tem sessões futuras para cancelar. "
+                    "Se precisar fazer alterações, por favor entre em contato com seu trainer."
                 )
             
             # Find the next scheduled session
@@ -766,8 +748,8 @@ class StudentHandler:
             
             if not next_session:
                 return (
-                    "You don't have any scheduled sessions to cancel. "
-                    "If you need to make changes, please contact your trainer."
+                    "Você não tem sessões agendadas para cancelar. "
+                    "Se precisar fazer alterações, por favor entre em contato com seu trainer."
                 )
             
             # Get session and trainer details
@@ -786,8 +768,8 @@ class StudentHandler:
                     request_id=request_id,
                 )
                 return (
-                    "I'm having trouble processing your cancellation. "
-                    "Please contact your trainer directly."
+                    "Estou tendo problemas para processar seu cancelamento. "
+                    "Por favor, entre em contato com seu trainer diretamente."
                 )
             
             trainer_phone = trainer.get("phone_number")
@@ -804,19 +786,19 @@ class StudentHandler:
             twilio_client = TwilioClient()
             
             notification_message = (
-                f"⚠️ Session Cancellation Notice\n\n"
-                f"Student: {student_name}\n"
-                f"Date: {date_str}\n"
-                f"Time: {time_str}\n"
-                f"Duration: {duration} minutes\n"
+                f"⚠️ Aviso de Cancelamento de Sessão\n\n"
+                f"Aluno: {student_name}\n"
+                f"Data: {date_str}\n"
+                f"Hora: {time_str}\n"
+                f"Duração: {duration} minutos\n"
             )
             
             if location:
-                notification_message += f"Location: {location}\n"
+                notification_message += f"Local: {location}\n"
             
             notification_message += (
-                f"\n{student_name} has cancelled their attendance for this session. "
-                f"Please reach out to reschedule if needed."
+                f"\n{student_name} cancelou a presença nesta sessão. "
+                f"Por favor, entre em contato para reagendar se necessário."
             )
             
             try:
@@ -847,11 +829,11 @@ class StudentHandler:
             
             # Send confirmation to student
             return (
-                f"Your cancellation has been noted. ✅\n\n"
-                f"Session: {date_str} at {time_str}\n"
+                f"Seu cancelamento foi registrado. ✅\n\n"
+                f"Sessão: {date_str} às {time_str}\n"
                 f"Trainer: {trainer_name}\n\n"
-                f"Your trainer has been notified and will reach out to you shortly.\n\n"
-                f"To reschedule, please contact your trainer directly."
+                f"Seu trainer foi notificado e entrará em contato com você em breve.\n\n"
+                f"Para reagendar, por favor entre em contato com seu trainer diretamente."
             )
         
         except Exception as e:
@@ -863,6 +845,6 @@ class StudentHandler:
             )
             
             return (
-                "I'm having trouble processing your cancellation right now. "
-                "Please contact your trainer directly to cancel your session."
+                "Estou tendo problemas para processar seu cancelamento agora. "
+                "Por favor, entre em contato com seu trainer diretamente para cancelar sua sessão."
             )

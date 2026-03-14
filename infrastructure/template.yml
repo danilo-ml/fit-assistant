@@ -21,21 +21,127 @@ Parameters:
     Default: 5
     Description: Write capacity units for DynamoDB table
 
-  TwilioAccountSid:
+  BedrockModelId:
     Type: String
-    NoEcho: true
-    Description: Twilio Account SID for WhatsApp messaging
-
-  TwilioAuthToken:
-    Type: String
-    NoEcho: true
-    Description: Twilio Auth Token for WhatsApp messaging
-
-  TwilioWhatsAppNumber:
-    Type: String
-    Description: Twilio WhatsApp number (format whatsapp:+1234567890)
+    Default: 'amazon.nova-micro-v1:0'
+    Description: AWS Bedrock model ID
 
 Resources:
+  # Secrets Manager for sensitive credentials
+  TwilioCredentialsSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'fitagent/twilio/${Environment}'
+      Description: Twilio API credentials for WhatsApp messaging
+      SecretString: !Sub |
+        {
+          "account_sid": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT",
+          "auth_token": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT",
+          "whatsapp_number": "whatsapp:+1234567890"
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  GoogleOAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'fitagent/google-oauth/${Environment}'
+      Description: Google OAuth credentials for calendar integration
+      SecretString: !Sub |
+        {
+          "client_id": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT",
+          "client_secret": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT"
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  OutlookOAuthSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'fitagent/outlook-oauth/${Environment}'
+      Description: Microsoft Outlook OAuth credentials for calendar integration
+      SecretString: !Sub |
+        {
+          "client_id": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT",
+          "client_secret": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT"
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # KMS Key for OAuth token encryption
+  OAuthEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for encrypting OAuth tokens in ${Environment}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Lambda Execution Roles
+            Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:Encrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+            Condition:
+              StringLike:
+                'aws:PrincipalArn': !Sub 'arn:aws:iam::${AWS::AccountId}:role/fitagent-*-role-${Environment}'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  OAuthEncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/fitagent-oauth-${Environment}'
+      TargetKeyId: !Ref OAuthEncryptionKey
+
+  # S3 Bucket for receipt storage
+  ReceiptsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'fitagent-receipts-${Environment}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldReceipts
+            Status: Enabled
+            ExpirationInDays: 2555  # 7 years for tax purposes
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
   FitAgentTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -191,7 +297,8 @@ Resources:
                 Action:
                   - s3:GetObject
                   - s3:PutObject
-                Resource: '*'
+                  - s3:DeleteObject
+                Resource: !Sub '${ReceiptsBucket.Arn}/*'
         - PolicyName: SecretsManagerAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -199,7 +306,33 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: '*'
+                Resource:
+                  - !Ref TwilioCredentialsSecret
+                  - !Ref GoogleOAuthSecret
+                  - !Ref OutlookOAuthSecret
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                Resource: !GetAtt OAuthEncryptionKey.Arn
+        - PolicyName: SQSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource:
+                  - !GetAtt MessageQueue.Arn
+                  - !GetAtt MessageDLQ.Arn
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -233,6 +366,68 @@ Resources:
                 Resource:
                   - !GetAtt FitAgentTable.Arn
                   - !Sub '${FitAgentTable.Arn}/index/*'
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref TwilioCredentialsSecret
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # IAM Role for OAuth Callback Lambda
+  OAuthCallbackLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'fitagent-oauth-callback-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                Resource:
+                  - !GetAtt FitAgentTable.Arn
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref TwilioCredentialsSecret
+                  - !Ref GoogleOAuthSecret
+                  - !Ref OutlookOAuthSecret
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                Resource: !GetAtt OAuthEncryptionKey.Arn
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -245,26 +440,168 @@ Resources:
     Properties:
       FunctionName: !Sub 'fitagent-message-processor-${Environment}'
       Runtime: python3.12
-      Handler: src.handlers.message_processor.lambda_handler
+      Handler: handlers.message_processor.lambda_handler
       Role: !GetAtt MessageProcessorLambdaRole.Arn
       Timeout: 180
       MemorySize: 1024
+      Code:
+        S3Bucket: fitagent-lambda-deployments-429649512384
+        S3Key: production/lambda-latest.zip
       Environment:
         Variables:
           DYNAMODB_TABLE: !Ref FitAgentTable
-          TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
-          TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
-          TWILIO_WHATSAPP_NUMBER: !Ref TwilioWhatsAppNumber
+          S3_BUCKET: !Ref ReceiptsBucket
+          TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
+          GOOGLE_OAUTH_SECRET_NAME: !Ref GoogleOAuthSecret
+          OUTLOOK_OAUTH_SECRET_NAME: !Ref OutlookOAuthSecret
+          KMS_KEY_ALIAS: !Sub 'alias/fitagent-oauth-${Environment}'
+          OAUTH_REDIRECT_URI: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/oauth/callback'
           ENVIRONMENT: !Ref Environment
-          ENABLE_MULTI_AGENT: 'false'
-          BEDROCK_MODEL_ID: 'amazon.nova-micro-v1:0'
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
           BEDROCK_REGION: !Ref AWS::Region
-          AWS_REGION: !Ref AWS::Region
+          OTEL_PYTHON_CONTEXT: contextvars_context
+          OTEL_SDK_DISABLED: "true"
+          OTEL_PROPAGATORS: "none"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # Webhook Handler Lambda Function
+  WebhookHandlerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'fitagent-webhook-handler-${Environment}'
+      Runtime: python3.12
+      Handler: handlers.webhook_handler.lambda_handler
+      Role: !GetAtt MessageProcessorLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 256
       Code:
-        ZipFile: |
-          # Placeholder - actual code deployed via CI/CD
-          def lambda_handler(event, context):
-              return {'statusCode': 200, 'body': 'Placeholder'}
+        S3Bucket: fitagent-lambda-deployments-429649512384
+        S3Key: production/lambda-latest.zip
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref FitAgentTable
+          SQS_QUEUE_URL: !Ref MessageQueue
+          TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # OAuth Callback Lambda Function
+  OAuthCallbackFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'fitagent-oauth-callback-${Environment}'
+      Runtime: python3.12
+      Handler: handlers.oauth_callback.lambda_handler
+      Role: !GetAtt OAuthCallbackLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        S3Bucket: fitagent-lambda-deployments-429649512384
+        S3Key: production/lambda-latest.zip
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref FitAgentTable
+          TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
+          GOOGLE_OAUTH_SECRET_NAME: !Ref GoogleOAuthSecret
+          OUTLOOK_OAUTH_SECRET_NAME: !Ref OutlookOAuthSecret
+          KMS_KEY_ALIAS: !Sub 'alias/fitagent-oauth-${Environment}'
+          OAUTH_REDIRECT_URI: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/oauth/callback'
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # SQS FIFO Queue for message processing with ordering guarantees
+  MessageQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'fitagent-messages-${Environment}.fifo'
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 300  # 5 minutes - allows Lambda to process and retry
+      MessageRetentionPeriod: 1209600  # 14 days
+      ReceiveMessageWaitTimeSeconds: 20  # Long polling to reduce empty receives
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MessageDLQ.Arn
+        maxReceiveCount: 3  # Retry 3 times before moving to DLQ
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # Dead Letter Queue (FIFO)
+  MessageDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'fitagent-messages-dlq-${Environment}.fifo'
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # SNS Topic for DLQ Alarm Notifications
+  # Note: After deployment, subscribe to this topic to receive DLQ alarm notifications
+  # Example: aws sns subscribe --topic-arn <DLQAlarmTopicArn> --protocol email --notification-endpoint your-email@example.com
+  DLQAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'fitagent-dlq-alarm-${Environment}'
+      DisplayName: FitAgent DLQ Alarm Notifications
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # CloudWatch Alarm for DLQ Messages
+  MessageDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'fitagent-dlq-messages-${Environment}'
+      AlarmDescription: Alert when messages are in the Dead Letter Queue
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300  # 5 minutes
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MessageDLQ.QueueName
+      AlarmActions:
+        - !Ref DLQAlarmTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # SQS Event Source Mapping for Message Processor
+  MessageProcessorEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt MessageQueue.Arn
+      FunctionName: !Ref MessageProcessorFunction
+      BatchSize: 1
+      MaximumBatchingWindowInSeconds: 0
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -277,22 +614,18 @@ Resources:
     Properties:
       FunctionName: !Sub 'fitagent-session-confirmation-${Environment}'
       Runtime: python3.12
-      Handler: src.handlers.session_confirmation.lambda_handler
+      Handler: handlers.session_confirmation.lambda_handler
       Role: !GetAtt SessionConfirmationLambdaRole.Arn
       Timeout: 60
       MemorySize: 512
+      Code:
+        S3Bucket: fitagent-lambda-deployments-429649512384
+        S3Key: production/lambda-latest.zip
       Environment:
         Variables:
           DYNAMODB_TABLE: !Ref FitAgentTable
-          TWILIO_ACCOUNT_SID: !Ref TwilioAccountSid
-          TWILIO_AUTH_TOKEN: !Ref TwilioAuthToken
-          TWILIO_WHATSAPP_NUMBER: !Ref TwilioWhatsAppNumber
+          TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
           ENVIRONMENT: !Ref Environment
-      Code:
-        ZipFile: |
-          # Placeholder - actual code deployed via CI/CD
-          def lambda_handler(event, context):
-              return {'statusCode': 200, 'body': 'Placeholder'}
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -321,6 +654,96 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt SessionConfirmationRule.Arn
 
+  # API Gateway for Webhook
+  WebhookApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'fitagent-webhook-api-${Environment}'
+      Description: API Gateway for Twilio WhatsApp webhook
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  WebhookResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ParentId: !GetAtt WebhookApi.RootResourceId
+      PathPart: webhook
+
+  WebhookMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ResourceId: !Ref WebhookResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebhookHandlerFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  # OAuth Callback API Resources
+  OAuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ParentId: !GetAtt WebhookApi.RootResourceId
+      PathPart: oauth
+
+  OAuthCallbackResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ParentId: !Ref OAuthResource
+      PathPart: callback
+
+  OAuthCallbackMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ResourceId: !Ref OAuthCallbackResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OAuthCallbackFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  WebhookDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - WebhookMethod
+      - OAuthCallbackMethod
+    Properties:
+      RestApiId: !Ref WebhookApi
+      StageName: !Ref Environment
+
+  WebhookLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WebhookHandlerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApi}/*/*/*'
+
+  OAuthCallbackLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref OAuthCallbackFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApi}/*/*/*'
+
 Outputs:
   TableName:
     Description: DynamoDB table name
@@ -339,6 +762,42 @@ Outputs:
     Value: !GetAtt FitAgentTable.StreamArn
     Export:
       Name: !Sub '${AWS::StackName}-TableStreamArn'
+  
+  ReceiptsBucketName:
+    Description: S3 bucket for receipt storage
+    Value: !Ref ReceiptsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReceiptsBucket'
+
+  TwilioSecretArn:
+    Description: Twilio credentials secret ARN
+    Value: !Ref TwilioCredentialsSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-TwilioSecret'
+
+  GoogleOAuthSecretArn:
+    Description: Google OAuth credentials secret ARN
+    Value: !Ref GoogleOAuthSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-GoogleOAuthSecret'
+
+  OutlookOAuthSecretArn:
+    Description: Outlook OAuth credentials secret ARN
+    Value: !Ref OutlookOAuthSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-OutlookOAuthSecret'
+
+  KMSKeyId:
+    Description: KMS key ID for OAuth encryption
+    Value: !Ref OAuthEncryptionKey
+    Export:
+      Name: !Sub '${AWS::StackName}-KMSKeyId'
+
+  KMSKeyArn:
+    Description: KMS key ARN for OAuth encryption
+    Value: !GetAtt OAuthEncryptionKey.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-KMSKeyArn'
   
   PhoneNumberIndexName:
     Description: Phone number GSI name
@@ -399,3 +858,63 @@ Outputs:
     Value: !Ref MessageProcessorFunction
     Export:
       Name: !Sub '${AWS::StackName}-MessageProcessorFunctionName'
+
+  WebhookHandlerFunctionArn:
+    Description: Webhook Handler Lambda function ARN
+    Value: !GetAtt WebhookHandlerFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-WebhookHandlerFunctionArn'
+
+  WebhookHandlerFunctionName:
+    Description: Webhook Handler Lambda function name
+    Value: !Ref WebhookHandlerFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-WebhookHandlerFunctionName'
+
+  WebhookApiUrl:
+    Description: Webhook API Gateway URL for Twilio configuration
+    Value: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/webhook'
+    Export:
+      Name: !Sub '${AWS::StackName}-WebhookApiUrl'
+
+  OAuthCallbackUrl:
+    Description: OAuth callback URL for Google/Outlook calendar integration
+    Value: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/oauth/callback'
+    Export:
+      Name: !Sub '${AWS::StackName}-OAuthCallbackUrl'
+
+  WebhookApiId:
+    Description: API Gateway ID
+    Value: !Ref WebhookApi
+    Export:
+      Name: !Sub '${AWS::StackName}-WebhookApiId'
+
+  OAuthCallbackFunctionArn:
+    Description: OAuth Callback Lambda function ARN
+    Value: !GetAtt OAuthCallbackFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-OAuthCallbackFunctionArn'
+
+  OAuthCallbackFunctionName:
+    Description: OAuth Callback Lambda function name
+    Value: !Ref OAuthCallbackFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-OAuthCallbackFunctionName'
+
+  DLQAlarmTopicArn:
+    Description: SNS Topic ARN for DLQ alarm notifications
+    Value: !Ref DLQAlarmTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-DLQAlarmTopicArn'
+
+  DLQAlarmTopicName:
+    Description: SNS Topic name for DLQ alarm notifications
+    Value: !GetAtt DLQAlarmTopic.TopicName
+    Export:
+      Name: !Sub '${AWS::StackName}-DLQAlarmTopicName'
+
+  DLQAlarmArn:
+    Description: CloudWatch Alarm ARN for DLQ messages (used for rollback triggers)
+    Value: !GetAtt MessageDLQAlarm.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DLQAlarmArn'

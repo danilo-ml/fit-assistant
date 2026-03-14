@@ -16,10 +16,10 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import boto3
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.services.twilio_client import TwilioClient
-from src.utils.logging import get_logger
-from src.config import settings
+from models.dynamodb_client import DynamoDBClient
+from services.twilio_client import TwilioClient
+from utils.logging import get_logger
+from config import settings
 
 logger = get_logger(__name__)
 

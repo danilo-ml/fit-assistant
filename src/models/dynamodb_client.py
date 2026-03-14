@@ -36,8 +36,14 @@ class DynamoDBClient:
         
         # Configure boto3 client
         config = {}
-        if endpoint_url or os.getenv('AWS_ENDPOINT_URL'):
-            config['endpoint_url'] = endpoint_url or os.getenv('AWS_ENDPOINT_URL')
+        endpoint = endpoint_url or os.getenv('AWS_ENDPOINT_URL')
+        
+        if endpoint:
+            config['endpoint_url'] = endpoint
+            # Use LocalStack credentials if connecting to LocalStack
+            if 'localhost' in endpoint or '4566' in endpoint:
+                config['aws_access_key_id'] = os.getenv('LOCALSTACK_ACCESS_KEY_ID', 'test')
+                config['aws_secret_access_key'] = os.getenv('LOCALSTACK_SECRET_ACCESS_KEY', 'test')
         
         self.dynamodb = boto3.resource('dynamodb', **config)
         self.table = self.dynamodb.Table(self.table_name)
@@ -428,12 +434,22 @@ class DynamoDBClient:
         Returns:
             User record (trainer or student) if found, None otherwise
         """
-        results = self.query(
-            key_condition_expression=Key('phone_number').eq(phone_number),
+        # Try to find TRAINER first
+        trainer_results = self.query(
+            key_condition_expression=Key('phone_number').eq(phone_number) & Key('entity_type').eq('TRAINER'),
             index_name='phone-number-index',
             limit=1
         )
-        return results[0] if results else None
+        if trainer_results:
+            return trainer_results[0]
+        
+        # If no trainer found, try STUDENT
+        student_results = self.query(
+            key_condition_expression=Key('phone_number').eq(phone_number) & Key('entity_type').eq('STUDENT'),
+            index_name='phone-number-index',
+            limit=1
+        )
+        return student_results[0] if student_results else None
     
     # ==================== Notification Operations ====================
     

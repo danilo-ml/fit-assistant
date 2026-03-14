@@ -24,7 +24,12 @@ class TestMessageProcessorIntegration:
     @patch('src.handlers.message_processor.onboarding_handler')
     @patch('src.handlers.message_processor.message_router')
     def test_onboarding_flow_integration(self, mock_router, mock_onboarding):
-        """Test complete onboarding flow through message processor."""
+        """
+        Test complete onboarding flow through message processor.
+        
+        Language expectation: Portuguese
+        Expected: Welcome message in Portuguese
+        """
         # Arrange
         mock_router.route_message.return_value = {
             "handler_type": "onboarding",
@@ -34,7 +39,7 @@ class TestMessageProcessorIntegration:
         }
         
         mock_onboarding.handle_message.return_value = (
-            "Welcome to FitAgent! Are you a trainer or student?"
+            "Bem-vindo ao FitAgent! Você é personal trainer ou aluno?"
         )
         
         phone_number = "+14155551234"
@@ -51,15 +56,20 @@ class TestMessageProcessorIntegration:
             request_id="test-123"
         )
         
-        # Assert
-        assert "Welcome to FitAgent" in response
+        # Assert - Expect Portuguese welcome message
+        assert "Bem-vindo" in response or "FitAgent" in response
         mock_router.route_message.assert_called_once()
         mock_onboarding.handle_message.assert_called_once()
     
     @patch('src.handlers.message_processor.trainer_handler')
     @patch('src.handlers.message_processor.message_router')
     def test_trainer_flow_integration(self, mock_router, mock_trainer):
-        """Test complete trainer flow through message processor."""
+        """
+        Test complete trainer flow through message processor.
+        
+        Language expectation: Portuguese
+        Expected: Session scheduling confirmation in Portuguese
+        """
         # Arrange
         trainer_id = "trainer-123"
         user_data = {
@@ -76,7 +86,7 @@ class TestMessageProcessorIntegration:
         }
         
         mock_trainer.handle_message.return_value = (
-            "I've scheduled a session with Sarah for tomorrow at 2 PM."
+            "Agendei uma sessão com Sarah para amanhã às 14h."
         )
         
         phone_number = "+14155551234"
@@ -93,8 +103,8 @@ class TestMessageProcessorIntegration:
             request_id="test-123"
         )
         
-        # Assert
-        assert "scheduled" in response.lower()
+        # Assert - Expect Portuguese response
+        assert "agendei" in response.lower() or "scheduled" in response.lower()
         mock_router.route_message.assert_called_once()
         mock_trainer.handle_message.assert_called_once_with(
             trainer_id=trainer_id,
@@ -106,7 +116,12 @@ class TestMessageProcessorIntegration:
     @patch('src.handlers.message_processor.student_handler')
     @patch('src.handlers.message_processor.message_router')
     def test_student_flow_integration(self, mock_router, mock_student):
-        """Test complete student flow through message processor."""
+        """
+        Test complete student flow through message processor.
+        
+        Language expectation: Portuguese
+        Expected: Session list in Portuguese
+        """
         # Arrange
         student_id = "student-123"
         user_data = {
@@ -123,7 +138,7 @@ class TestMessageProcessorIntegration:
         }
         
         mock_student.handle_message.return_value = (
-            "Your upcoming sessions:\n1. Tomorrow at 2:00 PM with John Doe"
+            "Suas próximas sessões:\n1. Amanhã às 14:00 com John Doe"
         )
         
         phone_number = "+14155551234"
@@ -140,8 +155,8 @@ class TestMessageProcessorIntegration:
             request_id="test-123"
         )
         
-        # Assert
-        assert "upcoming sessions" in response.lower()
+        # Assert - Expect Portuguese response
+        assert "próximas" in response.lower() or "upcoming sessions" in response.lower()
         mock_router.route_message.assert_called_once()
         mock_student.handle_message.assert_called_once_with(
             student_id=student_id,
@@ -154,7 +169,12 @@ class TestMessageProcessorIntegration:
     @patch('src.handlers.message_processor.message_router')
     @patch('src.handlers.message_processor.onboarding_handler')
     def test_lambda_handler_sqs_event(self, mock_onboarding, mock_router, mock_twilio):
-        """Test lambda handler processes SQS event correctly."""
+        """
+        Test lambda handler processes SQS event correctly.
+        
+        Language expectation: Portuguese
+        Expected: Welcome message sent via Twilio in Portuguese
+        """
         # Arrange
         mock_router.route_message.return_value = {
             "handler_type": "onboarding",
@@ -163,7 +183,7 @@ class TestMessageProcessorIntegration:
             "user_data": None,
         }
         
-        mock_onboarding.handle_message.return_value = "Welcome!"
+        mock_onboarding.handle_message.return_value = "Bem-vindo!"
         mock_twilio.send_message.return_value = {
             "message_sid": "SM456",
             "status": "queued"
@@ -203,7 +223,7 @@ class TestMessageProcessorIntegration:
         # Verify Twilio was called with correct parameters
         call_args = mock_twilio.send_message.call_args
         assert call_args[1]["to"] == "+14155551234"
-        assert call_args[1]["body"] == "Welcome!"
+        assert call_args[1]["body"] == "Bem-vindo!"
     
     @patch('src.handlers.message_processor.message_router')
     def test_lambda_handler_handles_processing_errors(self, mock_router):

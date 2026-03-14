@@ -14,8 +14,8 @@ from typing import Optional
 import requests
 import boto3
 from botocore.exceptions import ClientError
-from src.config import settings
-from src.utils.logging import get_logger
+from config import settings
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 

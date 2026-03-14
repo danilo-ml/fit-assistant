@@ -8,7 +8,7 @@ for time overlaps with existing sessions using the session-date-index GSI.
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-from src.models.dynamodb_client import DynamoDBClient
+from models.dynamodb_client import DynamoDBClient
 
 
 class SessionConflictDetector:

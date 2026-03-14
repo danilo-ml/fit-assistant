@@ -612,49 +612,74 @@ class Reminder(BaseModel):
         )
 
 
-# Multi-Agent Architecture Models
-
-class HandoffRecord(BaseModel):
-    """Record of an agent handoff in the swarm."""
-    
-    from_agent: str
-    to_agent: str
-    reason: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
-class SharedContext(BaseModel):
-    """
-    Shared context passed between agents in the swarm.
+class MenuContext(BaseModel):
+    """Menu navigation context stored in DynamoDB."""
     
-    This context is VISIBLE to the LLM and used for reasoning.
-    Contains conversation state, extracted entities, and agent contributions.
-    """
-    
-    conversation_id: str
-    original_request: str
-    extracted_entities: Dict[str, Any] = Field(default_factory=dict)
-    handoff_history: List[HandoffRecord] = Field(default_factory=list)
-    agent_contributions: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    handoff_count: int = 0
-    conversation_history: Optional[List[Dict[str, Any]]] = None
+    entity_type: Literal["MENU_CONTEXT"] = "MENU_CONTEXT"
+    phone_number: str = Field(pattern=r'^\+[1-9]\d{1,14}$')
+    user_id: str
+    user_type: Literal["TRAINER", "STUDENT"]
+    menu_enabled: bool = True
+    current_menu: str = "main"
+    navigation_stack: List[str] = Field(default_factory=list, max_length=3)
+    pending_action: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class InvocationState(BaseModel):
-    """
-    Invocation state passed via kwargs, NOT visible in LLM prompts.
+    ttl: int
     
-    This is CRITICAL for security - contains trainer_id and client instances
-    that should never be exposed to or manipulated by the LLM.
-    """
+    @field_validator('phone_number')
+    @classmethod
+    def validate_phone_number(cls, v: str) -> str:
+        """Validate phone number is in E.164 format."""
+        import re
+        if not re.match(r'^\+[1-9]\d{1,14}$', v):
+            raise ValueError('Phone number must be in E.164 format')
+        return v
     
-    trainer_id: str
-    db_client: Any  # DynamoDBClient instance
-    s3_client: Any  # S3 client instance
-    twilio_client: Any  # Twilio client instance
-    feature_flags: Dict[str, bool] = Field(default_factory=dict)
+    @field_validator('navigation_stack')
+    @classmethod
+    def validate_navigation_stack(cls, v: List[str]) -> List[str]:
+        """Validate navigation stack doesn't exceed max depth."""
+        if len(v) > 3:
+            raise ValueError('Navigation stack cannot exceed 3 levels')
+        return v
     
-    class Config:
-        arbitrary_types_allowed = True
+    def to_dynamodb(self) -> Dict[str, Any]:
+        """Convert to DynamoDB item format."""
+        item = {
+            'PK': f'MENU#{self.phone_number}',
+            'SK': 'CONTEXT',
+            'entity_type': self.entity_type,
+            'phone_number': self.phone_number,
+            'user_id': self.user_id,
+            'user_type': self.user_type,
+            'menu_enabled': self.menu_enabled,
+            'current_menu': self.current_menu,
+            'navigation_stack': self.navigation_stack,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'ttl': self.ttl
+        }
+        
+        if self.pending_action:
+            item['pending_action'] = self.pending_action
+        
+        return item
+    
+    @classmethod
+    def from_dynamodb(cls, item: Dict[str, Any]) -> 'MenuContext':
+        """Create instance from DynamoDB item."""
+        return cls(
+            phone_number=item['phone_number'],
+            user_id=item['user_id'],
+            user_type=item['user_type'],
+            menu_enabled=item.get('menu_enabled', True),
+            current_menu=item.get('current_menu', 'main'),
+            navigation_stack=item.get('navigation_stack', []),
+            pending_action=item.get('pending_action'),
+            created_at=datetime.fromisoformat(item['created_at']),
+            updated_at=datetime.fromisoformat(item['updated_at']),
+            ttl=item['ttl']
+        )

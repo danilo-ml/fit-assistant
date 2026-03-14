@@ -109,6 +109,16 @@ class StructuredLogger:
         
         return json.dumps(log_entry)
     
+    def debug(self, message: str, **kwargs):
+        """
+        Log DEBUG level message.
+        
+        Args:
+            message: Log message
+            **kwargs: Optional fields (request_id, phone_number, custom fields)
+        """
+        self.logger.debug(self._format_log('DEBUG', message, **kwargs))
+    
     def info(self, message: str, **kwargs):
         """
         Log INFO level message.

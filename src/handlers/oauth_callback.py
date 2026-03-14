@@ -15,11 +15,11 @@ from datetime import datetime
 import requests
 from botocore.exceptions import ClientError
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.services.twilio_client import TwilioClient
-from src.utils.encryption import encrypt_oauth_token_base64
-from src.utils.logging import get_logger
-from src.config import settings
+from models.dynamodb_client import DynamoDBClient
+from services.twilio_client import TwilioClient
+from utils.encryption import encrypt_oauth_token_base64
+from utils.logging import get_logger
+from config import settings
 
 logger = get_logger(__name__)
 
@@ -28,6 +28,24 @@ dynamodb_client = DynamoDBClient(
     table_name=settings.dynamodb_table, endpoint_url=settings.aws_endpoint_url
 )
 twilio_client = TwilioClient()
+
+
+def _get_oauth_credentials(provider: str) -> Dict[str, str]:
+    """
+    Get OAuth credentials for the specified provider.
+    
+    Args:
+        provider: 'google' or 'outlook'
+        
+    Returns:
+        Dict with client_id and client_secret
+    """
+    if provider == "google":
+        return settings.get_google_oauth_credentials()
+    elif provider == "outlook":
+        return settings.get_outlook_oauth_credentials()
+    else:
+        return {"client_id": "", "client_secret": ""}
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -220,10 +238,10 @@ def _validate_state_token(state: str, request_id: str) -> Optional[Dict[str, Any
         Dict with trainer_id and provider, or None if invalid/expired
     """
     try:
-        # Query DynamoDB for state token
-        response = dynamodb_client.dynamodb.get_item(
-            TableName=settings.dynamodb_table,
-            Key={"PK": {"S": f"OAUTH_STATE#{state}"}, "SK": {"S": "METADATA"}},
+        # Query DynamoDB for state token using high-level resource API
+        table = dynamodb_client.table
+        response = table.get_item(
+            Key={"PK": f"OAUTH_STATE#{state}", "SK": "METADATA"},
         )
 
         item = response.get("Item")
@@ -231,15 +249,15 @@ def _validate_state_token(state: str, request_id: str) -> Optional[Dict[str, Any
             logger.warning("State token not found", request_id=request_id, state_token=state)
             return None
 
-        # Convert DynamoDB item to dict
+        # High-level API returns native Python types
         state_data = {
-            "trainer_id": item.get("trainer_id", {}).get("S", ""),
-            "provider": item.get("provider", {}).get("S", ""),
-            "created_at": item.get("created_at", {}).get("S", ""),
+            "trainer_id": item.get("trainer_id", ""),
+            "provider": item.get("provider", ""),
+            "created_at": item.get("created_at", ""),
         }
 
         # Check if state token has expired (TTL is handled by DynamoDB, but double-check)
-        ttl = int(item.get("ttl", {}).get("N", 0))
+        ttl = int(item.get("ttl", 0))
         current_timestamp = int(datetime.utcnow().timestamp())
 
         if ttl > 0 and current_timestamp > ttl:
@@ -282,20 +300,22 @@ def _exchange_code_for_tokens(
         if provider == "google":
             # Google OAuth2 token endpoint
             token_url = "https://oauth2.googleapis.com/token"
+            creds = _get_oauth_credentials("google")
             data = {
                 "code": code,
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
+                "client_id": creds["client_id"],
+                "client_secret": creds["client_secret"],
                 "redirect_uri": settings.oauth_redirect_uri,
                 "grant_type": "authorization_code",
             }
         else:  # outlook
             # Microsoft OAuth2 token endpoint
             token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+            creds = _get_oauth_credentials("outlook")
             data = {
                 "code": code,
-                "client_id": settings.outlook_client_id,
-                "client_secret": settings.outlook_client_secret,
+                "client_id": creds["client_id"],
+                "client_secret": creds["client_secret"],
                 "redirect_uri": settings.oauth_redirect_uri,
                 "grant_type": "authorization_code",
             }
@@ -377,9 +397,7 @@ def _store_calendar_config(
     }
 
     try:
-        dynamodb_client.dynamodb.put_item(
-            TableName=settings.dynamodb_table, Item=calendar_config
-        )
+        dynamodb_client.put_item(calendar_config)
 
         logger.info(
             "Calendar configuration stored successfully",
@@ -446,9 +464,9 @@ def _delete_state_token(state: str, request_id: str) -> None:
         request_id: Request ID for tracing
     """
     try:
-        dynamodb_client.dynamodb.delete_item(
-            TableName=settings.dynamodb_table,
-            Key={"PK": {"S": f"OAUTH_STATE#{state}"}, "SK": {"S": "METADATA"}},
+        table = dynamodb_client.table
+        table.delete_item(
+            Key={"PK": f"OAUTH_STATE#{state}", "SK": "METADATA"},
         )
 
         logger.info("State token deleted", request_id=request_id, state_token=state)

@@ -2,6 +2,15 @@
 
 A multi-tenant SaaS platform that enables personal trainers to manage their business through an AI-powered WhatsApp assistant. Built with AWS Strands for agentic orchestration, AWS Bedrock for LLM inference, and serverless event-driven architecture.
 
+## Quick Links
+
+- [Quickstart Guide](docs/QUICKSTART.md) - Get started in minutes
+- [Local Testing Guide](docs/guides/LOCAL_TESTING_GUIDE.md) - Complete testing documentation
+- [Architecture Documentation](docs/architecture/) - System design and technical details
+- [API Reference](docs/api/ENDPOINTS.md) - REST API documentation
+- [Contributing Guide](docs/development/CONTRIBUTING.md) - Development workflow
+- [Troubleshooting](docs/development/TROUBLESHOOTING.md) - Common issues and solutions
+
 ## Features
 
 - **Multi-Agent Conversational AI**: Swarm-based architecture with 6 specialized agents (Coordinator, Student, Session, Payment, Calendar, Notification) using AWS Strands SDK
@@ -64,8 +73,7 @@ This configuration optimizes for both cost efficiency and performance.
 │   │   ├── notification_sender.py # SQS notification processing
 │   │   └── oauth_callback.py      # OAuth callback handler
 │   ├── services/                  # Business logic services
-│   │   ├── swarm_orchestrator.py  # Multi-agent orchestration (NEW)
-│   │   ├── ai_agent.py            # Single agent (legacy)
+│   │   ├── strands_agent_service.py # Strands Agents SDK integration
 │   │   ├── message_router.py      # Phone number routing logic
 │   │   ├── calendar_sync.py       # Calendar API integration
 │   │   ├── receipt_storage.py     # S3 media handling
@@ -101,455 +109,107 @@ This configuration optimizes for both cost efficiency and performance.
 
 ## Getting Started
 
-### Prerequisites
+### Quick Setup (2 minutes)
 
-- Python 3.12+
-- Docker and Docker Compose
-- AWS CLI (for deployment)
-- Twilio account with WhatsApp enabled
-
-### Local Development Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd fitagent-whatsapp-assistant
-   ```
-
-2. **Create environment file**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Twilio credentials and OAuth client IDs
-   ```
-
-3. **Start LocalStack and services**
-   ```bash
-   docker-compose up -d
-   ```
-
-   This will:
-   - Start LocalStack with DynamoDB, S3, SQS, Lambda, API Gateway, EventBridge
-   - Initialize DynamoDB tables with GSIs
-   - Create S3 buckets with encryption
-   - Set up SQS queues with dead-letter queues
-   - Create KMS keys for OAuth token encryption
-
-4. **Install dependencies (for local development without Docker)**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -r requirements-dev.txt
-   ```
-
-5. **Run tests**
-   ```bash
-   pytest
-   ```
-
-6. **Run with coverage**
-   ```bash
-   pytest --cov=src --cov-report=html --cov-report=term
-   ```
-
-### Running the API Server
-
-**With Docker Compose:**
 ```bash
-docker-compose up api
+# 1. Start local environment
+make start
+
+# 2. Verify it's working
+curl http://localhost:8000/health
+
+# 3. Run tests
+make test
 ```
 
-**Without Docker:**
+That's it! All services (API + LocalStack) are running in Docker.
+
+See the [Quickstart Guide](docs/QUICKSTART.md) for detailed instructions.
+
+### E2E Testing with Twilio Sandbox
+
+For complete end-to-end testing with real WhatsApp messages:
+
 ```bash
-export AWS_ENDPOINT_URL=http://localhost:4566
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+# 1. Add Twilio credentials to .env
+# TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER
+
+# 2. Start everything (includes ngrok setup)
+make e2e-twilio
 ```
 
-The API will be available at `http://localhost:8000`
+The script will guide you through Twilio webhook configuration.
+
+For detailed instructions, see:
+- [Local Testing Guide](docs/guides/LOCAL_TESTING_GUIDE.md) - Complete documentation
+- [Twilio Sandbox Setup](docs/guides/TWILIO_SANDBOX_SETUP.md) - Detailed Twilio configuration
+
+## Documentation
+
+Complete documentation is available in the [docs/](docs/) directory:
+
+- **[Architecture](docs/architecture/)**: System design, multi-agent pattern, database schema
+- **[Guides](docs/guides/)**: Step-by-step tutorials for common tasks
+- **[API Reference](docs/api/)**: REST API endpoint documentation
+- **[Development](docs/development/)**: Contributing guidelines, troubleshooting, environment variables
+- **[Security](docs/security/)**: Security policies and best practices
+- **[Deployment](docs/deployment/)**: Production and staging deployment guides
 
 ## Testing
 
-### Run all tests
+All tests run inside Docker containers for consistency:
+
 ```bash
-pytest
-```
+# Run all tests
+make test
 
-### Run specific test types
-```bash
-# Unit tests only
-pytest tests/unit/ -v
+# Run specific test types
+make test-unit
+make test-integration
+make test-property
 
-# Integration tests
-pytest tests/integration/ -v
-
-# Property-based tests
-pytest tests/property/ -v
-```
-
-### Run with coverage
-```bash
-pytest --cov=src --cov-report=html --cov-report=term
+# Run with coverage
+make test-coverage
 ```
 
 Coverage reports will be generated in `htmlcov/index.html`
 
 ## Code Quality
 
-### Format code
 ```bash
-black src/ tests/
-isort src/ tests/
+# Format code
+make format
+
+# Lint code
+make lint
+
+# Type check
+make type-check
+
+# Run all quality checks
+make quality
 ```
-
-### Lint code
-```bash
-flake8 src/ tests/
-```
-
-### Type check
-```bash
-mypy src/
-```
-
-## Environment Variables
-
-Required environment variables (see `.env.example` for full list):
-
-- `AWS_REGION`, `AWS_ENDPOINT_URL` (LocalStack)
-- `DYNAMODB_TABLE`, `S3_BUCKET`, `SQS_QUEUE_URL`
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER`
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- `OUTLOOK_CLIENT_ID`, `OUTLOOK_CLIENT_SECRET`
-- `BEDROCK_MODEL_ID`, `BEDROCK_REGION`
 
 ## Deployment
 
-Deployment is automated via GitHub Actions. See `.github/workflows/` for CI/CD pipelines.
+See [CI/CD Setup Guide](docs/guides/CI_CD_SETUP.md) for GitHub Actions configuration with OIDC.
 
-### Feature Flags
-
-The system supports gradual rollout of the multi-agent architecture via feature flags:
-
-#### Global Feature Flag
-
-Set the `ENABLE_MULTI_AGENT` environment variable:
-
-```bash
-# Enable multi-agent architecture
-export ENABLE_MULTI_AGENT=true
-
-# Disable (fallback to single-agent)
-export ENABLE_MULTI_AGENT=false
-```
-
-When disabled, the system automatically falls back to the legacy single AIAgent class with no data migration required.
-
-#### Per-Trainer Feature Flags
-
-For granular control, feature flags can be stored per trainer in DynamoDB:
-
-```python
-# Enable multi-agent for specific trainer
-db_client.put_item({
-    'PK': 'TRAINER#trainer_abc123',
-    'SK': 'FEATURE_FLAGS',
-    'enable_multi_agent': True,
-    'enable_session_confirmation': True
-})
-```
-
-This allows:
-- Canary deployments (10% of trainers)
-- A/B testing
-- Emergency rollback for specific trainers
-
-### Phased Rollout Strategy
-
-**Phase 1: Staging Validation (Week 1)**
-- Deploy to staging environment with `ENABLE_MULTI_AGENT=true`
-- Run integration tests and monitor metrics
-- Validate all agent handoffs work correctly
-
-**Phase 2: Canary Deployment (Week 2)**
-- Enable for 10% of production trainers
-- Monitor key metrics:
-  - Response time (target: <10s)
-  - Error rate (target: <1%)
-  - Handoff count (typical: 2-3 per conversation)
-  - Agent timeout violations
-
-**Phase 3: Gradual Rollout (Week 3-4)**
-- Week 3: Increase to 50% of trainers
-- Week 4: Full rollout to 100%
-- Keep feature flag for emergency rollback
-
-**Phase 4: Session Confirmation (Week 5)**
-- Deploy EventBridge rule for confirmation requests
-- Enable `enable_session_confirmation` feature flag
-- Monitor confirmation response rates
-
-### Rollback Procedure
-
-If issues are detected:
-
-1. **Global Rollback**
-   ```bash
-   # Update environment variable
-   aws lambda update-function-configuration \
-     --function-name fitagent-message-processor \
-     --environment Variables={ENABLE_MULTI_AGENT=false}
-   ```
-
-2. **Per-Trainer Rollback**
-   ```python
-   # Disable for specific trainer
-   db_client.update_item(
-       Key={'PK': 'TRAINER#trainer_abc123', 'SK': 'FEATURE_FLAGS'},
-       UpdateExpression='SET enable_multi_agent = :val',
-       ExpressionAttributeValues={':val': False}
-   )
-   ```
-
-3. **Verification**
-   - System automatically uses single AIAgent class
-   - No data migration required (both architectures use same DynamoDB schema)
-   - Existing conversations continue seamlessly
-
-### Manual Deployment
-
-1. **Package Lambda functions**
-   ```bash
-   zip -r lambda.zip src/ -x "*.pyc" -x "__pycache__/*"
-   ```
-
-2. **Deploy CloudFormation stack**
-   ```bash
-   aws cloudformation deploy \
-     --template-file infrastructure/template.yml \
-     --stack-name fitagent-production \
-     --parameter-overrides \
-       Environment=production \
-       EnableMultiAgent=true \
-       EnableSessionConfirmation=true \
-     --capabilities CAPABILITY_IAM
-   ```
-
-3. **Verify deployment**
-   ```bash
-   # Check Lambda environment variables
-   aws lambda get-function-configuration \
-     --function-name fitagent-message-processor \
-     --query 'Environment.Variables'
-   
-   # Check EventBridge rules
-   aws events list-rules --name-prefix session-confirmation
-   ```
-
-### Monitoring
-
-Key metrics to monitor during rollout:
-
-- **Response Time**: CloudWatch metric `SwarmExecutionTime` (target: <10s)
-- **Error Rate**: CloudWatch metric `SwarmErrorRate` (target: <1%)
-- **Handoff Count**: CloudWatch metric `HandoffCount` (typical: 2-3)
-- **Agent Timeouts**: CloudWatch metric `AgentTimeoutCount` (target: 0)
-- **Confirmation Rate**: CloudWatch metric `SessionConfirmationRate` (target: >80%)
-
-### Deployment Checklist
-
-- [ ] Update `ENABLE_MULTI_AGENT` environment variable
-- [ ] Deploy CloudFormation stack with new Lambda handlers
-- [ ] Verify EventBridge rules are enabled
-- [ ] Check DynamoDB GSI `session-confirmation-index` exists
-- [ ] Test session confirmation flow end-to-end
-- [ ] Monitor CloudWatch metrics for 24 hours
-- [ ] Verify no increase in error rates
-- [ ] Confirm response times within budget (<10s)
+For manual deployment, see [Production Deployment Guide](docs/deployment/PRODUCTION_DEPLOYMENT.md).
 
 ## Architecture
 
-### Overview
-
-FitAgent uses a serverless event-driven architecture with a Swarm-based multi-agent system for intelligent conversation handling. The system supports both single-agent (legacy) and multi-agent architectures via feature flags.
-
-### Event Flow
-
-1. **WhatsApp Message** → Twilio → API Gateway → SQS
-2. **SQS** → Message Processor Lambda → Swarm Orchestrator
-3. **Swarm Orchestrator** → Specialized Agents → Tool Functions
-4. **Tool Functions** → DynamoDB/S3/Calendar APIs
-5. **EventBridge** → Reminder/Confirmation Lambdas → Twilio → WhatsApp
-
-### Multi-Agent Architecture (Swarm Pattern)
-
-The system uses the **Swarm pattern** from AWS Strands SDK, where specialized agents autonomously collaborate through handoffs to handle different aspects of trainer business management.
-
-#### Agent Topology
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        WhatsApp Message                          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Coordinator Agent (Entry)                     │
-│              Intent analysis & entity extraction                 │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │   Autonomous Handoffs via   │
-              │    handoff_to_agent tool    │
-              └──────────────┬──────────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-        ▼                    ▼                    ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│   Student    │    │   Session    │    │   Payment    │
-│    Agent     │    │    Agent     │    │    Agent     │
-└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
-       │                   │                    │
-       │                   ▼                    │
-       │           ┌──────────────┐            │
-       │           │   Calendar   │            │
-       │           │    Agent     │            │
-       │           └──────────────┘            │
-       │                                       │
-       └───────────────────┬───────────────────┘
-                           │
-                           ▼
-                  ┌──────────────┐
-                  │ Notification │
-                  │    Agent     │
-                  └──────────────┘
-```
-
-#### Specialized Agents
-
-| Agent | Role | Key Capabilities | Handoff Targets |
-|-------|------|------------------|-----------------|
-| **Coordinator** | Entry point, intent analysis | Entity extraction, routing decisions | All agents |
-| **Student** | Student management | Register, update, view students | Session, Payment |
-| **Session** | Session scheduling | Schedule, reschedule, cancel, conflict detection | Calendar, Payment |
-| **Payment** | Payment tracking | Register payments, view history, statistics | None (terminal) |
-| **Calendar** | Calendar integration | OAuth flow, Google/Outlook sync | None (terminal) |
-| **Notification** | Broadcast messaging | Send notifications to student groups | None (terminal) |
-
-#### Swarm Configuration
-
-- **max_handoffs**: 5-7 (prevents infinite loops)
-- **node_timeout**: 30s (individual agent execution limit)
-- **execution_timeout**: 120s (total swarm execution limit)
-- **response_time_budget**: 10s (typical conversations: 3-5s)
-
-#### Shared Context
-
-All agents share conversation context containing:
-- Original user request
-- Extracted entities (student names, dates, amounts)
-- Handoff history (agent transitions)
-- Agent contributions (data from previous agents)
-
-This enables seamless collaboration without requiring users to repeat information across agent handoffs.
-
-#### Invocation State
-
-Multi-tenancy isolation is enforced through Invocation State (not visible to LLMs):
-- `trainer_id`: Ensures data isolation per trainer
-- Database clients and API connections
-- Feature flags for gradual rollout
-
-#### Example Handoff Flows
-
-**Scenario 1: Schedule Session**
-```
-User: "Schedule a session with John tomorrow at 2pm for 60 minutes"
-  ↓
-Coordinator: Extracts entities (student_name="John", date="tomorrow", time="2pm", duration=60)
-  ↓ handoff_to_agent(Session_Agent)
-Session_Agent: Validates student exists, checks conflicts, creates session
-  ↓ handoff_to_agent(Calendar_Agent)
-Calendar_Agent: Syncs event to Google Calendar
-  ↓ Response
-"Session scheduled for tomorrow at 2pm and synced to your calendar"
-```
-
-**Scenario 2: Register Student then Schedule**
-```
-User: "Add new student Sarah, phone +14155551234, email sarah@example.com"
-  ↓
-Coordinator: Identifies student registration intent
-  ↓ handoff_to_agent(Student_Agent)
-Student_Agent: Registers student, stores in DynamoDB
-  ↓ Response
-"Sarah registered! Would you like to schedule a session?"
-
-User: "Yes, tomorrow at 3pm"
-  ↓
-Coordinator: Retrieves previous context (student_name="Sarah")
-  ↓ handoff_to_agent(Session_Agent)
-Session_Agent: Schedules session using student from Shared_Context
-  ↓ Response
-"Session scheduled with Sarah for tomorrow at 3pm"
-```
-
-**Scenario 3: Session Confirmation Flow**
-```
-[1 hour after session ends]
-System → Student: "Did your 60-minute training session with Mike on Monday, Jan 15 at 2:00 PM happen? Reply YES or NO"
-
-Student: "YES"
-  ↓
-Message Processor: Detects confirmation response
-  ↓
-DynamoDB: Updates session status to "completed"
-  ↓ Response
-"Thanks for confirming! Session marked as completed."
-```
-
-### Session Confirmation Feature
-
-Automated session attendance tracking through WhatsApp confirmations.
-
-#### How It Works
-
-1. **Automatic Trigger**: EventBridge rule runs every 5 minutes to check for sessions that ended 1 hour ago
-2. **Confirmation Request**: System sends WhatsApp message to student: "Did your session with [Trainer] on [Date] at [Time] happen? Reply YES or NO"
-3. **Student Response**: Student replies YES (completed) or NO (missed)
-4. **Status Update**: Session status automatically updated in DynamoDB
-5. **Analytics**: Attendance rate and session statistics available for trainers
-
-#### Confirmation Statuses
-
-- **scheduled**: Session is booked but not yet occurred
-- **completed**: Student confirmed session happened (YES response)
-- **missed**: Student confirmed session was missed (NO response)
-- **pending_confirmation**: Session occurred but awaiting student response (24h timeout)
-- **cancelled**: Session was cancelled before it occurred
-
-#### Session Statistics
-
-Trainers can view:
-- Total sessions
-- Completed sessions
-- Missed sessions
-- Pending confirmations
-- Attendance rate (completed / (completed + missed))
-
-#### Implementation
-
-- **Lambda Handler**: `src/handlers/session_confirmation.py`
-- **EventBridge Rule**: Triggers every 5 minutes (cron: `*/5 * * * ? *`)
-- **DynamoDB GSI**: `session-confirmation-index` for efficient queries
-- **Message Detection**: Message processor detects YES/NO responses and updates session status
+See [Architecture Documentation](docs/architecture/) for detailed system design:
+- [System Design](docs/architecture/SYSTEM_DESIGN.md) - Overall architecture and components
+- [Multi-Agent Pattern](docs/architecture/MULTI_AGENT_PATTERN.md) - AWS Strands swarm orchestration
+- [Database Schema](docs/architecture/DATABASE_SCHEMA.md) - DynamoDB single-table design
 
 ## Contributing
 
-1. Create a feature branch
-2. Make your changes
-3. Run tests and ensure coverage ≥ 70%
-4. Run code quality checks (black, flake8, mypy)
-5. Submit a pull request
+See [Contributing Guide](docs/development/CONTRIBUTING.md) for development workflow and standards.
+
+## Security
+
+See [Security Policy](docs/security/SECURITY_POLICY.md) for vulnerability reporting and security best practices.
 
 ## License
 
@@ -557,4 +217,6 @@ Trainers can view:
 
 ## Support
 
-For issues and questions, please open a GitHub issue.
+- [Troubleshooting Guide](docs/development/TROUBLESHOOTING.md)
+- [GitHub Issues](https://github.com/your-org/fitagent/issues)
+- Email: support@fitagent.com

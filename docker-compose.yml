@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   localstack:
     image: localstack/localstack:latest
@@ -31,12 +29,13 @@ services:
       - AWS_REGION=us-east-1
       - DYNAMODB_TABLE=fitagent-main
       - S3_BUCKET=fitagent-receipts-local
-      - SQS_QUEUE_URL=http://localstack:4566/000000000000/fitagent-messages
-      - NOTIFICATION_QUEUE_URL=http://localstack:4566/000000000000/fitagent-notifications
-      - DLQ_URL=http://localstack:4566/000000000000/fitagent-messages-dlq
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/fitagent-messages.fifo
+      - NOTIFICATION_QUEUE_URL=http://localstack:4566/000000000000/fitagent-notifications.fifo
+      - DLQ_URL=http://localstack:4566/000000000000/fitagent-messages-dlq.fifo
       - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
       - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+      - SKIP_TWILIO_SIGNATURE_VALIDATION=${SKIP_TWILIO_SIGNATURE_VALIDATION:-true}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - OUTLOOK_CLIENT_ID=${OUTLOOK_CLIENT_ID}
@@ -48,6 +47,41 @@ services:
       - "./src:/app/src"
       - "./tests:/app/tests"
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - fitagent-network
+
+  sqs-processor:
+    build: .
+    container_name: fitagent-sqs-processor
+    environment:
+      - ENVIRONMENT=local
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      # For LocalStack services (DynamoDB, S3, SQS), use test credentials
+      - LOCALSTACK_ACCESS_KEY_ID=test
+      - LOCALSTACK_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      # Bedrock Configuration - uses real AWS with SSO temporary credentials
+      # Get credentials by running: ./scripts/export_sso_credentials.sh
+      - AWS_ACCESS_KEY_ID=${BEDROCK_AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${BEDROCK_AWS_SECRET_ACCESS_KEY:-test}
+      - AWS_SESSION_TOKEN=${BEDROCK_AWS_SESSION_TOKEN:-}
+      - AWS_BEDROCK_ENDPOINT_URL=
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-anthropic.claude-3-sonnet-20240229-v1:0}
+      - BEDROCK_REGION=${BEDROCK_REGION:-us-east-1}
+      # Other services
+      - DYNAMODB_TABLE=fitagent-main
+      - S3_BUCKET=fitagent-receipts-local
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/fitagent-messages.fifo
+      - NOTIFICATION_QUEUE_URL=http://localstack:4566/000000000000/fitagent-notifications.fifo
+      - DLQ_URL=http://localstack:4566/000000000000/fitagent-messages-dlq.fifo
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER}
+    depends_on:
+      - localstack
+    volumes:
+      - "./src:/app/src"
+    command: python -m src.local_sqs_poller
     networks:
       - fitagent-network
 

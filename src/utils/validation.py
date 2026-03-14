@@ -244,3 +244,67 @@ class InputSanitizer:
         else:
             # Return non-string types unchanged (int, float, bool, None, etc.)
             return value
+
+
+
+class ValidationMessages:
+    """
+    Portuguese (pt-BR) validation error messages for user-facing errors.
+    
+    These messages are used throughout the application to provide
+    culturally appropriate error feedback to Brazilian users.
+    
+    Note: Code, comments, logs, and documentation remain in English.
+    """
+    
+    # Phone number validation
+    INVALID_PHONE_FORMAT = "Formato de número de telefone inválido. Use o formato internacional (ex: +5511999999999)."
+    PHONE_REQUIRED = "Número de telefone é obrigatório."
+    
+    # Email validation
+    INVALID_EMAIL_FORMAT = "Endereço de e-mail inválido. Por favor, forneça um e-mail válido (ex: usuario@exemplo.com)."
+    EMAIL_REQUIRED = "Endereço de e-mail é obrigatório."
+    
+    # Date and time validation
+    INVALID_DATE_FORMAT = "Formato de data inválido. Use o formato AAAA-MM-DD (ex: 2024-12-25)."
+    INVALID_TIME_FORMAT = "Formato de hora inválido. Use o formato HH:MM (ex: 14:30)."
+    DATE_IN_PAST = "A data não pode estar no passado."
+    DATE_REQUIRED = "Data é obrigatória."
+    TIME_REQUIRED = "Hora é obrigatória."
+    
+    # Name validation
+    NAME_TOO_SHORT = "Nome muito curto. Por favor, forneça pelo menos 2 caracteres."
+    NAME_REQUIRED = "Nome é obrigatório."
+    
+    # Amount validation
+    INVALID_AMOUNT = "Valor inválido. O valor deve ser maior que zero."
+    AMOUNT_REQUIRED = "Valor é obrigatório."
+    
+    # Duration validation
+    INVALID_DURATION = "Duração inválida. A duração deve estar entre 15 e 480 minutos."
+    DURATION_REQUIRED = "Duração é obrigatória."
+    
+    # General validation
+    FIELD_REQUIRED = "Este campo é obrigatório."
+    INVALID_INPUT = "Entrada inválida. Por favor, verifique os dados fornecidos."
+    
+    # Session validation
+    SESSION_NOT_FOUND = "Sessão não encontrada."
+    SESSION_CONFLICT = "Conflito de horário. Já existe uma sessão agendada neste horário."
+    
+    # Student validation
+    STUDENT_NOT_FOUND = "Aluno não encontrado."
+    STUDENT_ALREADY_EXISTS = "Aluno já está registrado."
+    
+    # Payment validation
+    PAYMENT_NOT_FOUND = "Pagamento não encontrado."
+    INVALID_CURRENCY = "Código de moeda inválido."
+    
+    # Calendar validation
+    INVALID_PROVIDER = "Provedor de calendário inválido. Use 'google' ou 'outlook'."
+    CALENDAR_NOT_CONNECTED = "Calendário não conectado. Por favor, conecte seu calendário primeiro."
+    
+    # Generic errors
+    SOMETHING_WENT_WRONG = "Algo deu errado. Por favor, tente novamente."
+    TRY_AGAIN_LATER = "Por favor, tente novamente em alguns instantes."
+    CONTACT_SUPPORT = "Se o problema persistir, entre em contato com o suporte."

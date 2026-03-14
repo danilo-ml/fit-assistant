@@ -8,9 +8,9 @@ and routes messages to the appropriate handler (Onboarding, Trainer, or Student)
 from typing import Dict, Any, Optional
 from enum import Enum
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.logging import StructuredLogger
-from src.config import settings
+from models.dynamodb_client import DynamoDBClient
+from utils.logging import StructuredLogger
+from config import settings
 
 logger = StructuredLogger(__name__)
 

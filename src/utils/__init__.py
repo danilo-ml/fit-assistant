@@ -1,6 +1,6 @@
 """Utility functions."""
 
-from src.utils.retry import (
+from utils.retry import (
     retry_with_backoff,
     RetryableError,
     ExternalServiceError

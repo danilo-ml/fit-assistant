@@ -15,10 +15,10 @@ import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.validation import InputSanitizer
-from src.utils.logging import get_logger
-from src.config import settings
+from models.dynamodb_client import DynamoDBClient
+from utils.validation import InputSanitizer
+from utils.logging import get_logger
+from config import settings
 import boto3
 
 logger = get_logger(__name__)

@@ -17,13 +17,15 @@ All functions follow the tool function pattern:
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
-from src.models.entities import Session
-from src.models.dynamodb_client import DynamoDBClient
-from src.services.session_conflict import SessionConflictDetector
-from src.services.calendar_sync import CalendarSyncService
-from src.utils.validation import InputSanitizer
-from src.utils.logging import get_logger
-from src.config import settings
+from strands import tool
+
+from models.entities import Session
+from models.dynamodb_client import DynamoDBClient
+from services.session_conflict import SessionConflictDetector
+from services.calendar_sync import CalendarSyncService
+from utils.validation import InputSanitizer
+from utils.logging import get_logger
+from config import settings
 
 # Initialize DynamoDB client, conflict detector, and calendar sync service
 dynamodb_client = DynamoDBClient(
@@ -36,6 +38,7 @@ calendar_sync_service = CalendarSyncService(
 logger = get_logger(__name__)
 
 
+@tool
 def schedule_session(
     trainer_id: str,
     student_name: str,
@@ -46,22 +49,18 @@ def schedule_session(
 ) -> Dict[str, Any]:
     """
     Schedule a new training session with a student.
-
-    This tool:
-    1. Validates that the trainer exists
-    2. Finds the student by name and verifies trainer-student link
-    3. Parses and validates the date and time
-    4. Checks for scheduling conflicts using SessionConflictDetector
-    5. Creates a Session entity in DynamoDB with status="scheduled"
-    6. Returns session_id and any conflicts detected
+    
+    Use this tool when the trainer wants to schedule a training session with one of their students.
+    The tool validates the date/time, checks for scheduling conflicts, creates the session record,
+    and syncs with the trainer's connected calendar if available.
 
     Args:
-        trainer_id: Trainer identifier (required)
-        student_name: Student name (required)
-        date: Session date in ISO format YYYY-MM-DD (required)
-        time: Session time in HH:MM format (required)
-        duration_minutes: Session duration in minutes, 15-480 (required)
-        location: Session location (optional)
+        trainer_id: Trainer identifier (injected automatically by the service)
+        student_name: Student's name (e.g., "João Silva")
+        date: Session date in ISO format YYYY-MM-DD (e.g., "2024-01-20")
+        time: Session time in HH:MM format (e.g., "14:00")
+        duration_minutes: Session duration in minutes, between 15 and 480 (e.g., 60)
+        location: Session location (optional, e.g., "Main Gym")
 
     Returns:
         dict: {
@@ -287,6 +286,7 @@ def schedule_session(
         return {"success": False, "error": f"Failed to schedule session: {str(e)}"}
 
 
+@tool
 def reschedule_session(
     trainer_id: str,
     session_id: str,
@@ -295,20 +295,16 @@ def reschedule_session(
 ) -> Dict[str, Any]:
     """
     Reschedule an existing training session to a new date and time.
-
-    This tool:
-    1. Validates that the session exists and belongs to the trainer
-    2. Parses and validates the new date and time
-    3. Checks for scheduling conflicts at the new time (excluding current session)
-    4. Updates the session_datetime in DynamoDB
-    5. Triggers calendar sync (placeholder for now)
-    6. Returns updated session info and any conflicts detected
+    
+    Use this tool when the trainer wants to move an existing session to a different date/time.
+    The tool validates the new date/time, checks for scheduling conflicts, updates the session,
+    and syncs with the trainer's connected calendar if available.
 
     Args:
-        trainer_id: Trainer identifier (required)
-        session_id: Session identifier to reschedule (required)
-        new_date: New session date in ISO format YYYY-MM-DD (required)
-        new_time: New session time in HH:MM format (required)
+        trainer_id: Trainer identifier (injected automatically by the service)
+        session_id: Session identifier to reschedule (e.g., "xyz789")
+        new_date: New session date in ISO format YYYY-MM-DD (e.g., "2024-01-21")
+        new_time: New session time in HH:MM format (e.g., "15:00")
 
     Returns:
         dict: {
@@ -512,6 +508,7 @@ def reschedule_session(
         return {"success": False, "error": f"Failed to reschedule session: {str(e)}"}
 
 
+@tool
 def cancel_session(
     trainer_id: str,
     session_id: str,
@@ -519,18 +516,15 @@ def cancel_session(
 ) -> Dict[str, Any]:
     """
     Cancel an existing training session.
-
-    This tool:
-    1. Validates that the session exists and belongs to the trainer
-    2. Updates the session status to "cancelled"
-    3. Updates the updated_at timestamp
-    4. Triggers calendar sync (placeholder for now)
-    5. Returns success status and updated session info
+    
+    Use this tool when the trainer wants to cancel a scheduled session.
+    The tool updates the session status to cancelled, records the cancellation reason if provided,
+    and syncs with the trainer's connected calendar if available.
 
     Args:
-        trainer_id: Trainer identifier (required)
-        session_id: Session identifier to cancel (required)
-        reason: Optional cancellation reason
+        trainer_id: Trainer identifier (injected automatically by the service)
+        session_id: Session identifier to cancel (e.g., "xyz789")
+        reason: Optional cancellation reason (e.g., "Student requested cancellation")
 
     Returns:
         dict: {
@@ -678,6 +672,7 @@ def cancel_session(
 
 
 
+@tool
 def view_calendar(
     trainer_id: str,
     start_date: Optional[str] = None,
@@ -686,18 +681,16 @@ def view_calendar(
 ) -> Dict[str, Any]:
     """
     View training sessions in the trainer's calendar within a date range.
-
-    This tool:
-    1. Validates the trainer exists
-    2. Calculates date range based on filter (day/week/month) or explicit dates
-    3. Queries sessions using session-date-index GSI
-    4. Returns sessions in chronological order (earliest first)
+    
+    Use this tool when the trainer wants to see their scheduled sessions.
+    The tool can show sessions for today, this week, this month, or a custom date range.
+    Sessions are returned in chronological order (earliest first).
 
     Args:
-        trainer_id: Trainer identifier (required)
-        start_date: Start date in ISO format YYYY-MM-DD (optional if filter provided)
-        end_date: End date in ISO format YYYY-MM-DD (optional if filter provided)
-        filter: Convenient date range filter: "day", "week", or "month" (optional)
+        trainer_id: Trainer identifier (injected automatically by the service)
+        start_date: Start date in ISO format YYYY-MM-DD (optional if filter provided, e.g., "2024-01-20")
+        end_date: End date in ISO format YYYY-MM-DD (optional if filter provided, e.g., "2024-01-25")
+        filter: Convenient date range filter: "day" (today), "week" (next 7 days), or "month" (next 30 days) (optional)
 
     Returns:
         dict: {
@@ -879,3 +872,364 @@ def view_calendar(
         # Unexpected errors
         return {"success": False, "error": f"Failed to view calendar: {str(e)}"}
 
+
+
+@tool
+def schedule_recurring_session(
+    trainer_id: str,
+    student_name: str,
+    day_of_week: str,
+    time: str,
+    duration_minutes: int,
+    number_of_weeks: int,
+    location: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Schedule recurring training sessions on the same day and time each week.
+    
+    Use this tool when the trainer wants to schedule multiple sessions that repeat weekly
+    on the same day and time (e.g., "every Tuesday at 18:00"). The tool creates multiple
+    individual sessions and checks for conflicts. Calendar sync is skipped for performance
+    and can be done manually later if needed.
+
+    Args:
+        trainer_id: Trainer identifier (injected automatically by the service)
+        student_name: Student's name (e.g., "Juliana Nano")
+        day_of_week: Day of the week in Portuguese (e.g., "terça-feira", "segunda-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
+        time: Session time in HH:MM format (e.g., "18:00")
+        duration_minutes: Session duration in minutes, between 15 and 480 (e.g., 60)
+        number_of_weeks: Number of weeks to schedule (e.g., 4 for one month, 12 for three months)
+        location: Session location (optional, e.g., "Bluefit")
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'sessions_created': int,
+                'sessions': [
+                    {
+                        'session_id': str,
+                        'student_name': str,
+                        'session_datetime': str (ISO 8601 format),
+                        'duration_minutes': int,
+                        'location': str (optional),
+                        'status': str
+                    },
+                    ...
+                ],
+                'conflicts': [
+                    {
+                        'date': str,
+                        'conflicting_session': {
+                            'session_id': str,
+                            'student_name': str,
+                            'session_datetime': str
+                        }
+                    },
+                    ...
+                ] (only if conflicts detected)
+            },
+            'error': str (optional, only present if success=False)
+        }
+
+    Examples:
+        >>> schedule_recurring_session(
+        ...     trainer_id='abc123',
+        ...     student_name='Juliana Nano',
+        ...     day_of_week='terça-feira',
+        ...     time='18:00',
+        ...     duration_minutes=60,
+        ...     number_of_weeks=4,
+        ...     location='Bluefit'
+        ... )
+        {
+            'success': True,
+            'data': {
+                'sessions_created': 4,
+                'sessions': [
+                    {
+                        'session_id': 'xyz789',
+                        'student_name': 'Juliana Nano',
+                        'session_datetime': '2024-01-23T18:00:00',
+                        'duration_minutes': 60,
+                        'location': 'Bluefit',
+                        'status': 'scheduled'
+                    },
+                    ...
+                ]
+            }
+        }
+    """
+    try:
+        # Sanitize string inputs
+        sanitized_params = InputSanitizer.sanitize_tool_parameters(
+            {
+                "student_name": student_name,
+                "day_of_week": day_of_week,
+                "time": time,
+                "location": location if location else "",
+            }
+        )
+
+        student_name = sanitized_params["student_name"]
+        day_of_week = sanitized_params["day_of_week"].lower()
+        time = sanitized_params["time"]
+        location = sanitized_params["location"] if sanitized_params["location"] else None
+
+        # Validate required fields
+        if not student_name:
+            return {"success": False, "error": "Student name is required"}
+
+        if not day_of_week:
+            return {"success": False, "error": "Day of week is required"}
+
+        if not time:
+            return {"success": False, "error": "Session time is required"}
+
+        if not duration_minutes:
+            return {"success": False, "error": "Session duration is required"}
+
+        if not number_of_weeks:
+            return {"success": False, "error": "Number of weeks is required"}
+
+        # Validate duration range
+        if duration_minutes < 15 or duration_minutes > 480:
+            return {
+                "success": False,
+                "error": f"Duration must be between 15 and 480 minutes. Got: {duration_minutes}",
+            }
+
+        # Validate number of weeks
+        if number_of_weeks < 1 or number_of_weeks > 52:
+            return {
+                "success": False,
+                "error": f"Number of weeks must be between 1 and 52. Got: {number_of_weeks}",
+            }
+        
+        # Limit to 12 weeks (3 months) to avoid timeouts
+        if number_of_weeks > 12:
+            logger.warning(
+                "Limiting recurring sessions to 12 weeks to avoid timeout",
+                trainer_id=trainer_id,
+                requested_weeks=number_of_weeks
+            )
+            number_of_weeks = 12
+
+        # Map Portuguese day names to weekday numbers (0=Monday, 6=Sunday)
+        day_mapping = {
+            "segunda-feira": 0,
+            "segunda": 0,
+            "terça-feira": 1,
+            "terça": 1,
+            "terca-feira": 1,
+            "terca": 1,
+            "quarta-feira": 2,
+            "quarta": 2,
+            "quinta-feira": 3,
+            "quinta": 3,
+            "sexta-feira": 4,
+            "sexta": 4,
+            "sábado": 5,
+            "sabado": 5,
+            "domingo": 6,
+        }
+
+        target_weekday = day_mapping.get(day_of_week)
+        if target_weekday is None:
+            return {
+                "success": False,
+                "error": f"Invalid day of week. Use: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo. Got: {day_of_week}",
+            }
+
+        # Verify trainer exists
+        trainer = dynamodb_client.get_trainer(trainer_id)
+        if not trainer:
+            return {"success": False, "error": f"Trainer not found: {trainer_id}"}
+
+        # Find student by name
+        trainer_students = dynamodb_client.get_trainer_students(trainer_id)
+
+        matching_student = None
+        for link in trainer_students:
+            if link.get("status") != "active":
+                continue
+
+            student_id = link.get("student_id")
+            if not student_id:
+                continue
+
+            student_data = dynamodb_client.get_student(student_id)
+            if student_data and student_data["name"].lower() == student_name.lower():
+                matching_student = student_data
+                break
+
+        if not matching_student:
+            return {
+                "success": False,
+                "error": f"Student '{student_name}' not found or not linked to this trainer. Please register the student first.",
+            }
+
+        student_id = matching_student["student_id"]
+
+        # Calculate the next occurrence of the target weekday
+        now = datetime.utcnow()
+        current_weekday = now.weekday()
+        
+        # Days until next occurrence
+        days_ahead = target_weekday - current_weekday
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        
+        # First session date
+        first_session_date = now + timedelta(days=days_ahead)
+
+        # Parse time
+        try:
+            hour, minute = map(int, time.split(':'))
+            if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+                raise ValueError("Invalid time")
+        except (ValueError, AttributeError):
+            return {
+                "success": False,
+                "error": f"Invalid time format. Use HH:MM (e.g., 18:00). Got: {time}",
+            }
+
+        # Create sessions for each week
+        created_sessions = []
+        conflicts_found = []
+        
+        # Optimize: Query all potential conflicts at once instead of per-week
+        # Calculate the full date range for all weeks
+        last_session_date = first_session_date + timedelta(weeks=number_of_weeks - 1)
+        last_session_datetime = last_session_date.replace(
+            hour=hour,
+            minute=minute,
+            second=0,
+            microsecond=0
+        )
+        
+        # Query all sessions in the date range once
+        query_start = first_session_date.replace(hour=hour, minute=minute, second=0, microsecond=0) - timedelta(minutes=30)
+        query_end = last_session_datetime + timedelta(minutes=duration_minutes + 30)
+        
+        existing_sessions = dynamodb_client.get_sessions_by_date_range(
+            trainer_id=trainer_id,
+            start_datetime=query_start,
+            end_datetime=query_end,
+            status_filter=['scheduled', 'confirmed']
+        )
+        
+        # Build a set of existing session time windows for fast lookup
+        existing_windows = []
+        for session in existing_sessions:
+            session_start = datetime.fromisoformat(session['session_datetime'])
+            session_end = session_start + timedelta(minutes=session['duration_minutes'])
+            existing_windows.append({
+                'start': session_start,
+                'end': session_end,
+                'session': session
+            })
+
+        for week in range(number_of_weeks):
+            # Calculate session datetime for this week
+            session_date = first_session_date + timedelta(weeks=week)
+            session_datetime = session_date.replace(
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0
+            )
+            
+            session_end_time = session_datetime + timedelta(minutes=duration_minutes)
+
+            # Check for conflicts using pre-fetched data
+            conflict_found = None
+            for window in existing_windows:
+                # Check for overlap: (start1 < end2) AND (end1 > start2)
+                if session_datetime < window['end'] and session_end_time > window['start']:
+                    conflict_found = window['session']
+                    break
+            
+            if conflict_found:
+                # Record conflict but continue creating other sessions
+                conflicts_found.append({
+                    "date": session_datetime.strftime("%Y-%m-%d"),
+                    "conflicting_session": {
+                        "session_id": conflict_found["session_id"],
+                        "student_name": conflict_found["student_name"],
+                        "session_datetime": conflict_found["session_datetime"],
+                    }
+                })
+                continue  # Skip this week due to conflict
+
+            # Create session entity
+            session = Session(
+                trainer_id=trainer_id,
+                student_id=student_id,
+                student_name=matching_student["name"],
+                session_datetime=session_datetime,
+                duration_minutes=duration_minutes,
+                location=location,
+                status="scheduled",
+            )
+
+            # Save session to DynamoDB
+            dynamodb_client.put_session(session.to_dynamodb())
+
+            # Add to created sessions list
+            session_info = {
+                "session_id": session.session_id,
+                "student_name": session.student_name,
+                "session_datetime": session.session_datetime.isoformat(),
+                "duration_minutes": session.duration_minutes,
+                "status": session.status,
+            }
+
+            if location:
+                session_info["location"] = location
+
+            created_sessions.append(session_info)
+
+        # Skip calendar sync for recurring sessions to avoid timeout
+
+        # Prepare response
+        if not created_sessions:
+            return {
+                "success": False,
+                "error": f"Could not create any sessions. All {number_of_weeks} weeks had conflicts.",
+                "data": {
+                    "sessions_created": 0,
+                    "conflicts": conflicts_found
+                }
+            }
+
+        response_data = {
+            "sessions_created": len(created_sessions),
+            "sessions": created_sessions,
+        }
+
+        if conflicts_found:
+            response_data["conflicts"] = conflicts_found
+            response_data["message"] = f"Created {len(created_sessions)} sessions. {len(conflicts_found)} weeks skipped due to conflicts."
+
+        logger.info(
+            "Recurring sessions created",
+            trainer_id=trainer_id,
+            student_name=student_name,
+            sessions_created=len(created_sessions),
+            conflicts=len(conflicts_found),
+        )
+
+        return {"success": True, "data": response_data}
+
+    except ValueError as e:
+        return {"success": False, "error": f"Validation error: {str(e)}"}
+
+    except Exception as e:
+        logger.error(
+            "Failed to schedule recurring sessions",
+            trainer_id=trainer_id,
+            error=str(e),
+            exc_info=True
+        )
+        return {"success": False, "error": f"Failed to schedule recurring sessions: {str(e)}"}

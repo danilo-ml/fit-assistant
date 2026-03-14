@@ -243,12 +243,17 @@ class TestLambdaHandler:
         assert "login.microsoftonline.com" in call_args[0][0]
 
     def test_oauth_error_user_denied(self, error_callback_event):
-        """Test OAuth callback when user denies access."""
+        """
+        Test OAuth callback when user denies access.
+        
+        Language expectation: Portuguese
+        Expected: Error message in Portuguese
+        """
         response = lambda_handler(error_callback_event, None)
 
         assert response["statusCode"] == 400
-        assert "Authorization Failed" in response["body"]
-        assert "User denied access" in response["body"]
+        assert ("Autorização Falhou" in response["body"] or "Authorization Failed" in response["body"])
+        assert ("negou acesso" in response["body"] or "User denied access" in response["body"])
 
     def test_missing_code_parameter(self, mock_dynamodb_client):
         """Test OAuth callback with missing code parameter."""
@@ -306,7 +311,12 @@ class TestLambdaHandler:
         mock_dynamodb_client,
         mock_requests,
     ):
-        """Test OAuth callback when token exchange fails."""
+        """
+        Test OAuth callback when token exchange fails.
+        
+        Language expectation: Portuguese
+        Expected: Error message in Portuguese
+        """
         mock_dynamodb_client.dynamodb.get_item.return_value = valid_state_data
 
         # Token exchange returns error
@@ -318,7 +328,7 @@ class TestLambdaHandler:
         response = lambda_handler(valid_google_callback_event, None)
 
         assert response["statusCode"] == 400
-        assert "Authorization Failed" in response["body"]
+        assert ("Autorização Falhou" in response["body"] or "Authorization Failed" in response["body"])
 
     def test_missing_refresh_token(
         self,

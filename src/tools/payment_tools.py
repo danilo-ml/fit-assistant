@@ -16,10 +16,12 @@ All functions follow the tool function pattern:
 from typing import Dict, Any
 from datetime import datetime
 
-from src.models.entities import Payment
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.validation import InputSanitizer
-from src.config import settings
+from strands import tool
+
+from models.entities import Payment
+from models.dynamodb_client import DynamoDBClient
+from utils.validation import InputSanitizer
+from config import settings
 
 # Initialize DynamoDB client
 dynamodb_client = DynamoDBClient(
@@ -27,6 +29,7 @@ dynamodb_client = DynamoDBClient(
 )
 
 
+@tool
 def register_payment(
     trainer_id: str,
     student_name: str,
@@ -40,16 +43,13 @@ def register_payment(
 ) -> Dict[str, Any]:
     """
     Register a payment record with status="pending".
-
-    This tool:
-    1. Validates required fields (trainer_id, student_name, amount, payment_date)
-    2. Sanitizes all input strings
-    3. Creates a Payment entity in DynamoDB with status="pending"
-    4. Supports optional receipt_s3_key for media receipts
-    5. Returns payment_id and success status
+    
+    Use this tool when the trainer wants to record a payment received from a student.
+    The tool validates the payment details, links it to the student, and stores the
+    payment record with pending status. Optionally supports receipt media storage.
 
     Args:
-        trainer_id: Trainer identifier (required)
+        trainer_id: Trainer identifier (injected automatically by the service)
         student_name: Student name (required)
         amount: Payment amount (required, must be > 0)
         payment_date: Payment date in ISO format YYYY-MM-DD (required)
@@ -385,6 +385,7 @@ def confirm_payment(
         return {"success": False, "error": f"Failed to confirm payment: {str(e)}"}
 
 
+@tool
 def view_payments(
     trainer_id: str,
     student_name: str = None,
@@ -392,16 +393,13 @@ def view_payments(
 ) -> Dict[str, Any]:
     """
     View all payments for a trainer with optional filtering.
-
-    This tool:
-    1. Validates that the trainer exists
-    2. Queries all payments for the trainer using PK=TRAINER#{id}, SK begins_with PAYMENT#
-    3. Supports optional filtering by student_name (case-insensitive)
-    4. Supports optional filtering by status ("pending" or "confirmed")
-    5. Returns list of payments with all fields
+    
+    Use this tool when the trainer wants to see payment records. The tool can filter
+    by student name or payment status (pending/confirmed) and returns a list of all
+    matching payments with their details.
 
     Args:
-        trainer_id: Trainer identifier (required)
+        trainer_id: Trainer identifier (injected automatically by the service)
         student_name: Filter by student name (optional, case-insensitive)
         status: Filter by payment status (optional, "pending" or "confirmed")
 

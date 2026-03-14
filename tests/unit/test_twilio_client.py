@@ -16,10 +16,17 @@ class TestTwilioClientInitialization:
     
     def test_init_with_default_settings(self):
         """Test initialization with settings from config."""
-        with patch('src.services.twilio_client.settings') as mock_settings:
+        with patch('src.services.twilio_client.settings') as mock_settings, \
+             patch('src.services.twilio_client.Client'), \
+             patch('src.services.twilio_client.RequestValidator'):
             mock_settings.twilio_account_sid = "AC123"
             mock_settings.twilio_auth_token = "token123"
             mock_settings.twilio_whatsapp_number = "+14155238886"
+            mock_settings.get_twilio_credentials.return_value = {
+                'account_sid': "AC123",
+                'auth_token': "token123",
+                'whatsapp_number': "+14155238886"
+            }
             
             client = TwilioClient()
             
@@ -29,15 +36,17 @@ class TestTwilioClientInitialization:
     
     def test_init_with_custom_credentials(self):
         """Test initialization with custom credentials."""
-        client = TwilioClient(
-            account_sid="AC456",
-            auth_token="token456",
-            whatsapp_number="+14155238887"
-        )
-        
-        assert client.account_sid == "AC456"
-        assert client.auth_token == "token456"
-        assert client.whatsapp_number == "+14155238887"
+        with patch('src.services.twilio_client.Client'), \
+             patch('src.services.twilio_client.RequestValidator'):
+            client = TwilioClient(
+                account_sid="AC456",
+                auth_token="token456",
+                whatsapp_number="+14155238887"
+            )
+            
+            assert client.account_sid == "AC456"
+            assert client.auth_token == "token456"
+            assert client.whatsapp_number == "+14155238887"
     
     def test_init_creates_twilio_client(self):
         """Test that Twilio client is created during initialization."""
@@ -93,10 +102,10 @@ class TestSendMessage:
         
         client.client.messages.create = Mock(return_value=mock_message)
         
-        # Send message
+        # Send message (Portuguese example)
         result = client.send_message(
             to="+1234567890",
-            body="Your session is scheduled for tomorrow at 2 PM"
+            body="Sua sessão está agendada para amanhã às 14h"
         )
         
         # Verify result
@@ -104,7 +113,7 @@ class TestSendMessage:
         assert result['status'] == "queued"
         assert result['to'] == "+1234567890"
         assert result['from'] == "+14155238886"
-        assert result['body'] == "Your session is scheduled for tomorrow at 2 PM"
+        assert result['body'] == "Sua sessão está agendada para amanhã às 14h"
         assert result['date_created'] == "2024-01-15T10:30:00"
         assert result['date_sent'] is None
         assert result['error_code'] is None
@@ -114,7 +123,7 @@ class TestSendMessage:
         client.client.messages.create.assert_called_once_with(
             from_='whatsapp:+14155238886',
             to='whatsapp:+1234567890',
-            body="Your session is scheduled for tomorrow at 2 PM"
+            body="Sua sessão está agendada para amanhã às 14h"
         )
     
     def test_send_message_with_media(self, mock_twilio_client):

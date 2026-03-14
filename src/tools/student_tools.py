@@ -15,10 +15,12 @@ All functions follow the tool function pattern:
 
 from typing import Dict, Any
 
-from src.models.entities import Student, TrainerStudentLink
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.validation import PhoneNumberValidator, InputSanitizer
-from src.config import settings
+from strands import tool
+
+from models.entities import Student, TrainerStudentLink
+from models.dynamodb_client import DynamoDBClient
+from utils.validation import PhoneNumberValidator, InputSanitizer
+from config import settings
 
 # Initialize DynamoDB client
 dynamodb_client = DynamoDBClient(
@@ -26,25 +28,23 @@ dynamodb_client = DynamoDBClient(
 )
 
 
+@tool
 def register_student(
     trainer_id: str, name: str, phone_number: str, email: str, training_goal: str
 ) -> Dict[str, Any]:
     """
-    Register a new student and link them to a trainer.
-
-    This tool:
-    1. Validates phone number in E.164 format
-    2. Sanitizes all input strings
-    3. Creates a Student entity in DynamoDB
-    4. Creates a Trainer-Student link record
-    5. Returns student_id and success status
+    Register a new student and link them to the trainer.
+    
+    Use this tool when the trainer wants to add a new student to their roster.
+    The tool validates the phone number format, checks for duplicates, and creates
+    the student record with a link to the trainer.
 
     Args:
-        trainer_id: Trainer identifier (required)
-        name: Student name (required)
-        phone_number: Student phone in E.164 format (required)
-        email: Student email (required)
-        training_goal: Student's training goal (required)
+        trainer_id: Trainer identifier (injected automatically by the service)
+        name: Student's full name (e.g., "João Silva")
+        phone_number: Student's phone in E.164 format (e.g., "+5511999999999")
+        email: Student's email address (e.g., "joao@example.com")
+        training_goal: Student's training goal (e.g., "Perder peso e ganhar massa muscular")
 
     Returns:
         dict: {
@@ -60,25 +60,9 @@ def register_student(
         }
 
     Examples:
-        >>> register_student(
-        ...     trainer_id='abc123',
-        ...     name='John Doe',
-        ...     phone_number='+14155552671',
-        ...     email='john@example.com',
-        ...     training_goal='Build muscle mass'
-        ... )
-        {
-            'success': True,
-            'data': {
-                'student_id': 'def456',
-                'name': 'John Doe',
-                'phone_number': '+14155552671',
-                'email': 'john@example.com',
-                'training_goal': 'Build muscle mass'
-            }
-        }
-
-    Validates: Requirements 2.1, 2.2, 2.3, 2.4
+        When trainer says: "Registrar novo aluno João Silva"
+        When trainer says: "Adicionar aluna Maria com telefone +5511988887777"
+        When trainer says: "Cadastrar aluno Pedro, email pedro@email.com, objetivo: ganhar massa"
     """
     try:
         # Sanitize all string inputs
@@ -196,18 +180,16 @@ def register_student(
         return {"success": False, "error": f"Failed to register student: {str(e)}"}
 
 
+@tool
 def view_students(trainer_id: str) -> Dict[str, Any]:
     """
-    View all students linked to a trainer.
-
-    This tool:
-    1. Validates that the trainer exists
-    2. Queries all trainer-student links for the trainer
-    3. Retrieves full student details for each linked student
-    4. Returns list of students with all fields
+    View all students linked to the trainer.
+    
+    Use this tool when the trainer wants to see their complete list of students.
+    Returns all active students with their contact information and training goals.
 
     Args:
-        trainer_id: Trainer identifier (required)
+        trainer_id: Trainer identifier (injected automatically by the service)
 
     Returns:
         dict: {
@@ -229,24 +211,10 @@ def view_students(trainer_id: str) -> Dict[str, Any]:
         }
 
     Examples:
-        >>> view_students(trainer_id='abc123')
-        {
-            'success': True,
-            'data': {
-                'students': [
-                    {
-                        'student_id': 'def456',
-                        'name': 'John Doe',
-                        'phone_number': '+14155552671',
-                        'email': 'john@example.com',
-                        'training_goal': 'Build muscle mass',
-                        'created_at': '2024-01-15T10:30:00Z'
-                    }
-                ]
-            }
-        }
-
-    Validates: Requirements 2.5
+        When trainer says: "Ver meus alunos"
+        When trainer says: "Listar todos os alunos"
+        When trainer says: "Quem são meus alunos?"
+        When trainer says: "Mostrar lista de alunos"
     """
     try:
         # Verify trainer exists
@@ -289,6 +257,7 @@ def view_students(trainer_id: str) -> Dict[str, Any]:
         return {"success": False, "error": f"Failed to retrieve students: {str(e)}"}
 
 
+@tool
 def update_student(
     trainer_id: str,
     student_id: str,
@@ -299,24 +268,18 @@ def update_student(
 ) -> Dict[str, Any]:
     """
     Update student information.
-
-    This tool:
-    1. Validates that the trainer exists
-    2. Validates that the student exists
-    3. Verifies the trainer-student link is active
-    4. Sanitizes all input strings
-    5. Validates phone number if provided
-    6. Updates only the provided fields
-    7. Updates the updated_at timestamp
-    8. Returns the updated student record
+    
+    Use this tool when the trainer wants to modify a student's details such as
+    name, email, phone number, or training goal. At least one field must be provided
+    for update. Only updates the fields that are provided.
 
     Args:
-        trainer_id: Trainer identifier (required)
-        student_id: Student identifier (required)
-        name: Updated student name (optional)
-        email: Updated student email (optional)
-        phone_number: Updated phone in E.164 format (optional)
-        training_goal: Updated training goal (optional)
+        trainer_id: Trainer identifier (injected automatically by the service)
+        student_id: Student identifier (required - the ID of the student to update)
+        name: Updated student name (optional, e.g., "João Silva Santos")
+        email: Updated student email (optional, e.g., "joao.novo@example.com")
+        phone_number: Updated phone in E.164 format (optional, e.g., "+5511988887777")
+        training_goal: Updated training goal (optional, e.g., "Perder 10kg em 3 meses")
 
     Returns:
         dict: {
@@ -333,24 +296,10 @@ def update_student(
         }
 
     Examples:
-        >>> update_student(
-        ...     trainer_id='abc123',
-        ...     student_id='def456',
-        ...     training_goal='Lose weight and build endurance'
-        ... )
-        {
-            'success': True,
-            'data': {
-                'student_id': 'def456',
-                'name': 'John Doe',
-                'phone_number': '+14155552671',
-                'email': 'john@example.com',
-                'training_goal': 'Lose weight and build endurance',
-                'updated_at': '2024-01-20T15:30:00Z'
-            }
-        }
-
-    Validates: Requirements 2.6
+        When trainer says: "Atualizar objetivo do aluno João para perder peso"
+        When trainer says: "Mudar email do aluno abc123 para novo@email.com"
+        When trainer says: "Alterar telefone da Maria para +5511999998888"
+        When trainer says: "Atualizar dados do aluno xyz789"
     """
     try:
         # Verify trainer exists

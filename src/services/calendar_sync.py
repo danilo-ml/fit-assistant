@@ -18,11 +18,11 @@ from typing import Optional, Dict, Any
 import requests
 from requests.exceptions import RequestException
 
-from src.config import settings
-from src.models.dynamodb_client import DynamoDBClient
-from src.utils.encryption import decrypt_oauth_token_base64, encrypt_oauth_token_base64
-from src.utils.retry import retry_with_backoff, ExternalServiceError
-from src.utils.logging import get_logger
+from config import settings
+from models.dynamodb_client import DynamoDBClient
+from utils.encryption import decrypt_oauth_token_base64, encrypt_oauth_token_base64
+from utils.retry import retry_with_backoff, ExternalServiceError
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -82,22 +82,13 @@ class CalendarSyncService:
             None: If no calendar is connected
         """
         try:
-            config = self.dynamodb_client.dynamodb.get_item(
-                TableName=settings.dynamodb_table,
-                Key={"PK": {"S": f"TRAINER#{trainer_id}"}, "SK": {"S": "CALENDAR_CONFIG"}},
-            )
-
-            if "Item" not in config:
+            config = self.dynamodb_client.get_calendar_config(trainer_id)
+            
+            if not config:
                 logger.info("No calendar config found", trainer_id=trainer_id)
                 return None
 
-            # Convert DynamoDB format to dict
-            item = config["Item"]
-            return {
-                "provider": item.get("provider", {}).get("S"),
-                "encrypted_refresh_token": item.get("encrypted_refresh_token", {}).get("S"),
-                "calendar_id": item.get("calendar_id", {}).get("S", "primary"),
-            }
+            return config
 
         except Exception as e:
             logger.error(
@@ -153,11 +144,12 @@ class CalendarSyncService:
             TokenRefreshError: If token refresh fails
         """
         try:
+            creds = settings.get_google_oauth_credentials()
             response = requests.post(
                 "https://oauth2.googleapis.com/token",
                 data={
-                    "client_id": settings.google_client_id,
-                    "client_secret": settings.google_client_secret,
+                    "client_id": creds["client_id"],
+                    "client_secret": creds["client_secret"],
                     "refresh_token": refresh_token,
                     "grant_type": "refresh_token",
                 },
@@ -193,11 +185,12 @@ class CalendarSyncService:
             TokenRefreshError: If token refresh fails
         """
         try:
+            creds = settings.get_outlook_oauth_credentials()
             response = requests.post(
                 "https://login.microsoftonline.com/common/oauth2/v2.0/token",
                 data={
-                    "client_id": settings.outlook_client_id,
-                    "client_secret": settings.outlook_client_secret,
+                    "client_id": creds["client_id"],
+                    "client_secret": creds["client_secret"],
                     "refresh_token": refresh_token,
                     "grant_type": "refresh_token",
                     "scope": "Calendars.ReadWrite offline_access",
