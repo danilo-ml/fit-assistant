@@ -26,6 +26,11 @@ Parameters:
     Default: 'amazon.nova-micro-v1:0'
     Description: AWS Bedrock model ID
 
+  DomainName:
+    Type: String
+    Default: 'fitassistant.com.br'
+    Description: Custom domain name for the static website
+
 Resources:
   # Secrets Manager for sensitive credentials
   TwilioCredentialsSecret:
@@ -141,6 +146,165 @@ Resources:
           Value: !Ref Environment
         - Key: Application
           Value: FitAgent
+
+  # S3 Bucket for static website hosting (Privacy Policy, Terms of Service)
+  StaticWebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'fitagent-static-website-${Environment}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # CloudFront Origin Access Control for static website bucket
+  StaticWebsiteCloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'fitagent-static-website-oac-${Environment}'
+        Description: OAC for static website S3 bucket access via CloudFront
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Bucket policy allowing access only via CloudFront OAC
+  StaticWebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StaticWebsiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${StaticWebsiteBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${StaticWebsiteDistribution}'
+
+  # CloudFront Distribution for static website
+  StaticWebsiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Aliases:
+          - !Ref DomainName
+          - !Sub 'www.${DomainName}'
+        ViewerCertificate:
+          AcmCertificateArn: !Ref StaticWebsiteCertificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt StaticWebsiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt StaticWebsiteCloudFrontOAC.Id
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: /erro.html
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /erro.html
+            ErrorCachingMinTTL: 300
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # Route 53 Hosted Zone for custom domain
+  StaticWebsiteHostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref DomainName
+
+  # ACM SSL Certificate for custom domain (must be in us-east-1 for CloudFront)
+  StaticWebsiteCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub 'www.${DomainName}'
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref StaticWebsiteHostedZone
+        - DomainName: !Sub 'www.${DomainName}'
+          HostedZoneId: !Ref StaticWebsiteHostedZone
+
+  # DNS A record for apex domain → CloudFront
+  StaticWebsiteApexARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref StaticWebsiteHostedZone
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt StaticWebsiteDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  # DNS A record for www subdomain → CloudFront
+  StaticWebsiteWwwARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref StaticWebsiteHostedZone
+      Name: !Sub 'www.${DomainName}'
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt StaticWebsiteDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  # DNS AAAA record for apex domain → CloudFront (IPv6)
+  StaticWebsiteApexAAAARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref StaticWebsiteHostedZone
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt StaticWebsiteDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  # DNS AAAA record for www subdomain → CloudFront (IPv6)
+  StaticWebsiteWwwAAAARecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref StaticWebsiteHostedZone
+      Name: !Sub 'www.${DomainName}'
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt StaticWebsiteDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2
 
   FitAgentTable:
     Type: AWS::DynamoDB::Table
@@ -455,7 +619,7 @@ Resources:
           GOOGLE_OAUTH_SECRET_NAME: !Ref GoogleOAuthSecret
           OUTLOOK_OAUTH_SECRET_NAME: !Ref OutlookOAuthSecret
           KMS_KEY_ALIAS: !Sub 'alias/fitagent-oauth-${Environment}'
-          OAUTH_REDIRECT_URI: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/oauth/callback'
+          OAUTH_REDIRECT_URI: !Sub 'https://api.${DomainName}/oauth/callback'
           ENVIRONMENT: !Ref Environment
           BEDROCK_MODEL_ID: !Ref BedrockModelId
           BEDROCK_REGION: !Ref AWS::Region
@@ -513,7 +677,7 @@ Resources:
           GOOGLE_OAUTH_SECRET_NAME: !Ref GoogleOAuthSecret
           OUTLOOK_OAUTH_SECRET_NAME: !Ref OutlookOAuthSecret
           KMS_KEY_ALIAS: !Sub 'alias/fitagent-oauth-${Environment}'
-          OAUTH_REDIRECT_URI: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/oauth/callback'
+          OAUTH_REDIRECT_URI: !Sub 'https://api.${DomainName}/oauth/callback'
           ENVIRONMENT: !Ref Environment
       Tags:
         - Key: Environment
@@ -744,6 +908,46 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApi}/*/*/*'
 
+  # ACM SSL Certificate for API subdomain (api.fitassistant.com.br)
+  ApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub 'api.${DomainName}'
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub 'api.${DomainName}'
+          HostedZoneId: !Ref StaticWebsiteHostedZone
+
+  # API Gateway Custom Domain Name for api.fitassistant.com.br
+  ApiGatewayCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Sub 'api.${DomainName}'
+      RegionalCertificateArn: !Ref ApiCertificate
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  # Base Path Mapping - maps root (/) of custom domain to API Gateway stage
+  ApiBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties:
+      DomainName: !Ref ApiGatewayCustomDomain
+      RestApiId: !Ref WebhookApi
+      Stage: !Ref Environment
+
+  # DNS A-alias record for API subdomain → API Gateway regional endpoint
+  ApiDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref StaticWebsiteHostedZone
+      Name: !Sub 'api.${DomainName}'
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiGatewayCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiGatewayCustomDomain.RegionalHostedZoneId
+
 Outputs:
   TableName:
     Description: DynamoDB table name
@@ -918,3 +1122,65 @@ Outputs:
     Value: !GetAtt MessageDLQAlarm.Arn
     Export:
       Name: !Sub '${AWS::StackName}-DLQAlarmArn'
+
+  StaticWebsiteBucketName:
+    Description: S3 bucket name for deploying static website HTML files
+    Value: !Ref StaticWebsiteBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-StaticWebsiteBucketName'
+
+  StaticWebsiteUrl:
+    Description: CloudFront distribution URL for the static website
+    Value: !Sub 'https://${StaticWebsiteDistribution.DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-StaticWebsiteUrl'
+
+  HostedZoneNameServers:
+    Description: Route 53 hosted zone nameservers for registro.br configuration
+    Value: !Join
+      - ','
+      - !GetAtt StaticWebsiteHostedZone.NameServers
+    Export:
+      Name: !Sub '${AWS::StackName}-HostedZoneNameServers'
+
+  CertificateArn:
+    Description: ACM certificate ARN for the custom domain
+    Value: !Ref StaticWebsiteCertificate
+    Export:
+      Name: !Sub '${AWS::StackName}-CertificateArn'
+
+  StaticWebsiteCustomUrl:
+    Description: Custom domain URL for the static website
+    Value: !Sub 'https://${DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-StaticWebsiteCustomUrl'
+
+  StaticWebsiteDistributionId:
+    Description: CloudFront distribution ID for deploy script
+    Value: !Ref StaticWebsiteDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-StaticWebsiteDistributionId'
+
+  ApiCustomDomainUrl:
+    Description: API custom domain base URL
+    Value: !Sub 'https://api.${DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiCustomDomainUrl'
+
+  ApiCustomWebhookUrl:
+    Description: Webhook URL using the API custom domain
+    Value: !Sub 'https://api.${DomainName}/webhook'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiCustomWebhookUrl'
+
+  ApiCustomOAuthCallbackUrl:
+    Description: OAuth callback URL using the API custom domain
+    Value: !Sub 'https://api.${DomainName}/oauth/callback'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiCustomOAuthCallbackUrl'
+
+  ApiCertificateArn:
+    Description: ACM certificate ARN for the API subdomain
+    Value: !Ref ApiCertificate
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiCertificateArn'
