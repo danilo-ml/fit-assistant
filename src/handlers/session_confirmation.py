@@ -178,13 +178,8 @@ def send_confirmation_request(
         twilio_client: Twilio client
         db_client: DynamoDB client
     """
-    # Get student name
-    student_item = db_client.get_item(
-        pk=f"TRAINER#{session.trainer_id}",
-        sk=f"STUDENT#{session.student_id}",
-    )
-    
-    student_name = student_item.get('name', 'aluno') if student_item else 'aluno'
+    # Get student name from session (already stored in session entity)
+    student_name = session.student_name or 'aluno'
     
     # Get trainer phone number
     trainer_item = db_client.get_item(

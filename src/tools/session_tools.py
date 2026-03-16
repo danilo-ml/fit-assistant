@@ -882,24 +882,24 @@ def schedule_recurring_session(
     day_of_week: str,
     time: str,
     duration_minutes: int,
-    number_of_weeks: int,
+    number_of_weeks: int = None,
     location: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Schedule recurring training sessions on the same day and time each week.
+    Schedule recurring training sessions on the same day(s) and time each week.
     
     Use this tool when the trainer wants to schedule multiple sessions that repeat weekly
-    on the same day and time (e.g., "every Tuesday at 18:00"). The tool creates multiple
-    individual sessions and checks for conflicts. Calendar sync is skipped for performance
-    and can be done manually later if needed.
+    on the same day(s) and time. Supports multiple days of the week separated by commas
+    (e.g., "terça-feira, quinta-feira"). If number_of_weeks is not provided, defaults to
+    12 weeks (3 months).
 
     Args:
         trainer_id: Trainer identifier (injected automatically by the service)
         student_name: Student's name (e.g., "Juliana Nano")
-        day_of_week: Day of the week in Portuguese (e.g., "terça-feira", "segunda-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
+        day_of_week: Day(s) of the week in Portuguese, comma-separated for multiple days (e.g., "terça-feira", "terça-feira, quinta-feira")
         time: Session time in HH:MM format (e.g., "18:00")
         duration_minutes: Session duration in minutes, between 15 and 480 (e.g., 60)
-        number_of_weeks: Number of weeks to schedule (e.g., 4 for one month, 12 for three months)
+        number_of_weeks: Number of weeks to schedule. Optional - defaults to 12 (3 months). Max 52.
         location: Session location (optional, e.g., "Bluefit")
 
     Returns:
@@ -907,28 +907,8 @@ def schedule_recurring_session(
             'success': bool,
             'data': {
                 'sessions_created': int,
-                'sessions': [
-                    {
-                        'session_id': str,
-                        'student_name': str,
-                        'session_datetime': str (ISO 8601 format),
-                        'duration_minutes': int,
-                        'location': str (optional),
-                        'status': str
-                    },
-                    ...
-                ],
-                'conflicts': [
-                    {
-                        'date': str,
-                        'conflicting_session': {
-                            'session_id': str,
-                            'student_name': str,
-                            'session_datetime': str
-                        }
-                    },
-                    ...
-                ] (only if conflicts detected)
+                'sessions': [...],
+                'conflicts': [...] (only if conflicts detected)
             },
             'error': str (optional, only present if success=False)
         }
@@ -937,29 +917,10 @@ def schedule_recurring_session(
         >>> schedule_recurring_session(
         ...     trainer_id='abc123',
         ...     student_name='Juliana Nano',
-        ...     day_of_week='terça-feira',
-        ...     time='18:00',
+        ...     day_of_week='terça-feira, quinta-feira',
+        ...     time='17:00',
         ...     duration_minutes=60,
-        ...     number_of_weeks=4,
-        ...     location='Bluefit'
         ... )
-        {
-            'success': True,
-            'data': {
-                'sessions_created': 4,
-                'sessions': [
-                    {
-                        'session_id': 'xyz789',
-                        'student_name': 'Juliana Nano',
-                        'session_datetime': '2024-01-23T18:00:00',
-                        'duration_minutes': 60,
-                        'location': 'Bluefit',
-                        'status': 'scheduled'
-                    },
-                    ...
-                ]
-            }
-        }
     """
     try:
         # Sanitize string inputs
@@ -990,8 +951,9 @@ def schedule_recurring_session(
         if not duration_minutes:
             return {"success": False, "error": "Session duration is required"}
 
+        # Default number_of_weeks to 12 (3 months) if not provided
         if not number_of_weeks:
-            return {"success": False, "error": "Number of weeks is required"}
+            number_of_weeks = 12
 
         # Validate duration range
         if duration_minutes < 15 or duration_minutes > 480:
@@ -1035,11 +997,23 @@ def schedule_recurring_session(
             "domingo": 6,
         }
 
-        target_weekday = day_mapping.get(day_of_week)
-        if target_weekday is None:
+        # Parse multiple days of week (comma-separated)
+        day_parts = [d.strip().lower() for d in day_of_week.split(",") if d.strip()]
+        target_weekdays = []
+        for day_part in day_parts:
+            weekday_num = day_mapping.get(day_part)
+            if weekday_num is None:
+                return {
+                    "success": False,
+                    "error": f"Invalid day of week: '{day_part}'. Use: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo.",
+                }
+            if weekday_num not in target_weekdays:
+                target_weekdays.append(weekday_num)
+        
+        if not target_weekdays:
             return {
                 "success": False,
-                "error": f"Invalid day of week. Use: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo. Got: {day_of_week}",
+                "error": f"No valid days of week provided. Got: {day_of_week}",
             }
 
         # Verify trainer exists
@@ -1072,17 +1046,9 @@ def schedule_recurring_session(
 
         student_id = matching_student["student_id"]
 
-        # Calculate the next occurrence of the target weekday
+        # Calculate the first occurrence of each target weekday
         now = datetime.utcnow()
         current_weekday = now.weekday()
-        
-        # Days until next occurrence
-        days_ahead = target_weekday - current_weekday
-        if days_ahead <= 0:  # Target day already happened this week
-            days_ahead += 7
-        
-        # First session date
-        first_session_date = now + timedelta(days=days_ahead)
 
         # Parse time
         try:
@@ -1095,28 +1061,28 @@ def schedule_recurring_session(
                 "error": f"Invalid time format. Use HH:MM (e.g., 18:00). Got: {time}",
             }
 
-        # Create sessions for each week
-        created_sessions = []
-        conflicts_found = []
-        
-        # Optimize: Query all potential conflicts at once instead of per-week
-        # Calculate the full date range for all weeks
-        last_session_date = first_session_date + timedelta(weeks=number_of_weeks - 1)
-        last_session_datetime = last_session_date.replace(
-            hour=hour,
-            minute=minute,
-            second=0,
-            microsecond=0
-        )
-        
-        # Query all sessions in the date range once
-        query_start = first_session_date.replace(hour=hour, minute=minute, second=0, microsecond=0) - timedelta(minutes=30)
-        query_end = last_session_datetime + timedelta(minutes=duration_minutes + 30)
-        
+        # Build list of all session dates across all target weekdays
+        all_session_dates = []
+        for target_weekday in sorted(target_weekdays):
+            days_ahead = target_weekday - current_weekday
+            if days_ahead <= 0:
+                days_ahead += 7
+            first_date = now + timedelta(days=days_ahead)
+            for week in range(number_of_weeks):
+                session_date = first_date + timedelta(weeks=week)
+                all_session_dates.append(session_date)
+
+        # Sort all dates chronologically
+        all_session_dates.sort()
+
+        # Query all potential conflicts at once
+        first_dt = all_session_dates[0].replace(hour=hour, minute=minute, second=0, microsecond=0) - timedelta(minutes=30)
+        last_dt = all_session_dates[-1].replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(minutes=duration_minutes + 30)
+
         existing_sessions = dynamodb_client.get_sessions_by_date_range(
             trainer_id=trainer_id,
-            start_datetime=query_start,
-            end_datetime=query_end,
+            start_datetime=first_dt,
+            end_datetime=last_dt,
             status_filter=['scheduled', 'confirmed']
         )
         
@@ -1131,9 +1097,10 @@ def schedule_recurring_session(
                 'session': session
             })
 
-        for week in range(number_of_weeks):
-            # Calculate session datetime for this week
-            session_date = first_session_date + timedelta(weeks=week)
+        created_sessions = []
+        conflicts_found = []
+
+        for session_date in all_session_dates:
             session_datetime = session_date.replace(
                 hour=hour,
                 minute=minute,

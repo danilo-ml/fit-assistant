@@ -481,15 +481,56 @@ class StudentHandler:
         phone_number = user_data.get("phone_number")
         student_name = user_data.get("name", "Student")
         message_text = message_body.get("body", "").strip().lower()
+        has_media = int(message_body.get("num_media", 0)) > 0
+        media_urls = message_body.get("media_urls", [])
+        
+        # Check conversation state for pending payment context
+        state = self.state_manager.get_state(phone_number)
+        pending_payment = state.context.get("pending_payment") if state and state.context else None
+        
+        # If student sends media (image/pdf) -> treat as payment receipt
+        if has_media and media_urls:
+            return self._handle_payment_receipt(
+                student_id=student_id,
+                user_data=user_data,
+                message_body=message_body,
+                media_urls=media_urls,
+                request_id=request_id,
+            )
+        
+        # If there's a pending payment waiting for reference month
+        if pending_payment and pending_payment.get("awaiting_reference_month"):
+            return self._handle_reference_month_response(
+                student_id=student_id,
+                user_data=user_data,
+                message_text=message_text,
+                pending_payment=pending_payment,
+                request_id=request_id,
+            )
+        
+        # Payment-related keywords (PT-BR)
+        payment_keywords = [
+            "paguei", "pago", "pagamento", "pix", "transferi",
+            "comprovante", "recibo", "boleto", "transferência",
+        ]
+        if any(word in message_text for word in payment_keywords):
+            return (
+                "Para registrar seu pagamento, por favor envie o comprovante "
+                "(foto do Pix, transferência ou recibo) aqui neste chat. 📸"
+            )
         
         # Simple keyword-based routing for student actions
-        if any(word in message_text for word in ["session", "schedule", "upcoming", "next"]):
+        if any(word in message_text for word in ["session", "schedule", "upcoming", "next",
+                                                   "sessão", "sessões", "agenda", "próxima",
+                                                   "treino", "treinos"]):
             return self._view_upcoming_sessions(student_id, student_name, request_id)
         
-        elif any(word in message_text for word in ["confirm", "yes", "attending"]):
+        elif any(word in message_text for word in ["confirm", "yes", "attending",
+                                                     "confirmar", "sim", "presença"]):
             return self._handle_confirmation(student_id, message_text, request_id)
         
-        elif any(word in message_text for word in ["cancel", "can't make", "cannot"]):
+        elif any(word in message_text for word in ["cancel", "can't make", "cannot",
+                                                     "cancelar", "não posso", "não vou"]):
             return self._handle_cancellation(student_id, message_text, request_id)
         
         else:
@@ -503,7 +544,8 @@ class StudentHandler:
             "Posso ajudá-lo com:\n\n"
             "📅 Ver próximas sessões\n"
             "✅ Confirmar presença\n"
-            "❌ Cancelar presença\n\n"
+            "❌ Cancelar presença\n"
+            "💰 Enviar comprovante de pagamento\n\n"
             "O que você gostaria de fazer?"
         )
     
@@ -819,3 +861,303 @@ class StudentHandler:
                 "Estou tendo problemas para processar seu cancelamento agora. "
                 "Por favor, entre em contato com seu trainer diretamente para cancelar sua sessão."
             )
+
+    def _handle_payment_receipt(
+        self,
+        student_id: str,
+        user_data: Dict[str, Any],
+        message_body: Dict[str, Any],
+        media_urls: list,
+        request_id: str,
+    ) -> str:
+        """
+        Handle payment receipt submission from student.
+
+        Stores the receipt in S3, determines the reference month,
+        creates a pending payment record, and notifies the trainer
+        to confirm receipt.
+        """
+        from services.receipt_storage import ReceiptStorageService
+        from services.twilio_client import TwilioClient
+
+        phone_number = user_data.get("phone_number")
+        student_name = user_data.get("name", "Aluno")
+
+        try:
+            # Find trainer(s) linked to this student
+            trainer_links = self._get_student_trainer_links(student_id)
+            if not trainer_links:
+                return (
+                    "Não encontrei nenhum trainer vinculado à sua conta. "
+                    "Por favor, entre em contato com seu trainer."
+                )
+
+            # Use first active trainer (most common case: 1 trainer per student)
+            trainer_id = trainer_links[0]["trainer_id"]
+            trainer = self.dynamodb.get_trainer(trainer_id)
+            if not trainer:
+                return "Erro ao localizar seu trainer. Tente novamente."
+
+            trainer_phone = trainer.get("phone_number")
+            trainer_name = trainer.get("name", "Trainer")
+
+            # Store receipt media in S3
+            receipt_service = ReceiptStorageService()
+            media = media_urls[0]  # Use first media attachment
+            media_url = media.get("url", "")
+            media_type = media.get("content_type", "image/jpeg")
+
+            receipt_result = receipt_service.store_receipt(
+                trainer_id=trainer_id,
+                student_id=student_id,
+                media_url=media_url,
+                media_type=media_type,
+            )
+
+            s3_key = receipt_result.get("s3_key", "")
+
+            # Check message text for reference month hint
+            message_text = message_body.get("body", "").strip()
+            reference_month = self._extract_reference_month(message_text)
+
+            if not reference_month:
+                # Save pending state and ask for reference month
+                self.state_manager.update_state(
+                    phone_number=phone_number,
+                    state="STUDENT_MENU",
+                    user_id=student_id,
+                    user_type="STUDENT",
+                    context={
+                        "pending_payment": {
+                            "awaiting_reference_month": True,
+                            "trainer_id": trainer_id,
+                            "s3_key": s3_key,
+                            "media_type": media_type,
+                        }
+                    },
+                )
+                return (
+                    "Recebi seu comprovante! 📄\n\n"
+                    "Para qual mês de referência é esse pagamento?\n"
+                    "Exemplo: março 2026, 03/2026"
+                )
+
+            # All info available — register and notify trainer
+            return self._register_and_notify_payment(
+                student_id=student_id,
+                student_name=student_name,
+                trainer_id=trainer_id,
+                trainer_phone=trainer_phone,
+                trainer_name=trainer_name,
+                s3_key=s3_key,
+                media_type=media_type,
+                reference_month=reference_month,
+                phone_number=phone_number,
+            )
+
+        except Exception as e:
+            logger.error(
+                "Failed to process payment receipt",
+                student_id=student_id,
+                error=str(e),
+                request_id=request_id,
+            )
+            return (
+                "Tive um problema ao processar seu comprovante. "
+                "Por favor, tente enviar novamente."
+            )
+
+    def _handle_reference_month_response(
+        self,
+        student_id: str,
+        user_data: Dict[str, Any],
+        message_text: str,
+        pending_payment: dict,
+        request_id: str,
+    ) -> str:
+        """Handle student's response with the reference month for a pending receipt."""
+        phone_number = user_data.get("phone_number")
+        student_name = user_data.get("name", "Aluno")
+        trainer_id = pending_payment.get("trainer_id")
+        s3_key = pending_payment.get("s3_key")
+        media_type = pending_payment.get("media_type", "image/jpeg")
+
+        reference_month = self._extract_reference_month(message_text)
+        if not reference_month:
+            return (
+                "Não consegui identificar o mês. Por favor, informe no formato:\n"
+                "março 2026 ou 03/2026"
+            )
+
+        trainer = self.dynamodb.get_trainer(trainer_id)
+        if not trainer:
+            return "Erro ao localizar seu trainer. Tente novamente."
+
+        trainer_phone = trainer.get("phone_number")
+        trainer_name = trainer.get("name", "Trainer")
+
+        # Clear pending state
+        self.state_manager.update_state(
+            phone_number=phone_number,
+            state="STUDENT_MENU",
+            user_id=student_id,
+            user_type="STUDENT",
+            context={"pending_payment": None},
+        )
+
+        return self._register_and_notify_payment(
+            student_id=student_id,
+            student_name=student_name,
+            trainer_id=trainer_id,
+            trainer_phone=trainer_phone,
+            trainer_name=trainer_name,
+            s3_key=s3_key,
+            media_type=media_type,
+            reference_month=reference_month,
+            phone_number=phone_number,
+        )
+
+    def _register_and_notify_payment(
+        self,
+        student_id: str,
+        student_name: str,
+        trainer_id: str,
+        trainer_phone: str,
+        trainer_name: str,
+        s3_key: str,
+        media_type: str,
+        reference_month: str,
+        phone_number: str,
+    ) -> str:
+        """
+        Create a pending payment record and notify the trainer to confirm.
+        """
+        from models.entities import Payment
+        from services.twilio_client import TwilioClient
+        from services.receipt_storage import ReceiptStorageService
+
+        now = datetime.utcnow()
+
+        # Create payment record with status pending_trainer_confirmation
+        payment = Payment(
+            trainer_id=trainer_id,
+            student_id=student_id,
+            student_name=student_name,
+            amount=0,  # Trainer will confirm the amount
+            currency="BRL",
+            payment_date=now.strftime("%Y-%m-%d"),
+            payment_status="pending",
+            receipt_s3_key=s3_key,
+            receipt_media_type=media_type,
+        )
+
+        self.dynamodb.put_payment(payment.to_dynamodb())
+
+        # Generate presigned URL for the receipt so trainer can view it
+        receipt_service = ReceiptStorageService()
+        try:
+            receipt_url = receipt_service.get_receipt_url(s3_key, expiration=86400)
+        except Exception:
+            receipt_url = None
+
+        # Notify trainer via WhatsApp
+        twilio = TwilioClient()
+        notification = (
+            f"💳 Comprovante de Pagamento Recebido\n\n"
+            f"Aluno: {student_name}\n"
+            f"Mês referência: {reference_month}\n"
+            f"ID do pagamento: {payment.payment_id}\n\n"
+        )
+        if receipt_url:
+            notification += f"📎 Comprovante: {receipt_url}\n\n"
+        notification += (
+            f"Para confirmar o recebimento, envie:\n"
+            f"\"confirmar pagamento {payment.payment_id}\""
+        )
+
+        try:
+            twilio.send_message(to=trainer_phone, body=notification)
+        except Exception as e:
+            logger.error(
+                "Failed to notify trainer about payment",
+                trainer_id=trainer_id,
+                error=str(e),
+            )
+
+        logger.info(
+            "Payment receipt processed and trainer notified",
+            student_id=student_id,
+            trainer_id=trainer_id,
+            payment_id=payment.payment_id,
+            reference_month=reference_month,
+        )
+
+        return (
+            f"✅ Comprovante recebido e enviado para {trainer_name}!\n\n"
+            f"Mês referência: {reference_month}\n"
+            f"Seu trainer irá confirmar o recebimento em breve."
+        )
+
+    def _get_student_trainer_links(self, student_id: str) -> list:
+        """Get active trainer links for a student."""
+        from boto3.dynamodb.conditions import Attr
+
+        try:
+            response = self.dynamodb.table.scan(
+                FilterExpression=Attr("entity_type").eq("TRAINER_STUDENT_LINK")
+                & Attr("student_id").eq(student_id)
+                & Attr("status").eq("active")
+            )
+            return response.get("Items", [])
+        except Exception as e:
+            logger.error("Failed to get trainer links", student_id=student_id, error=str(e))
+            return []
+
+    @staticmethod
+    def _extract_reference_month(text: str) -> str:
+        """
+        Extract reference month from text.
+
+        Supports formats like:
+        - "março 2026", "marco 2026"
+        - "03/2026", "3/2026"
+        - "março", "mar" (assumes current year)
+
+        Returns:
+            Formatted string like "03/2026" or empty string if not found.
+        """
+        import re
+
+        text = text.strip().lower()
+
+        month_names = {
+            "janeiro": "01", "jan": "01",
+            "fevereiro": "02", "fev": "02",
+            "março": "03", "marco": "03", "mar": "03",
+            "abril": "04", "abr": "04",
+            "maio": "05", "mai": "05",
+            "junho": "06", "jun": "06",
+            "julho": "07", "jul": "07",
+            "agosto": "08", "ago": "08",
+            "setembro": "09", "set": "09",
+            "outubro": "10", "out": "10",
+            "novembro": "11", "nov": "11",
+            "dezembro": "12", "dez": "12",
+        }
+
+        # Try MM/YYYY or M/YYYY
+        match = re.search(r'(\d{1,2})\s*/\s*(\d{4})', text)
+        if match:
+            month = match.group(1).zfill(2)
+            year = match.group(2)
+            if 1 <= int(month) <= 12:
+                return f"{month}/{year}"
+
+        # Try "month_name year"
+        for name, num in month_names.items():
+            if name in text:
+                year_match = re.search(r'(\d{4})', text)
+                year = year_match.group(1) if year_match else str(datetime.utcnow().year)
+                return f"{num}/{year}"
+
+        return ""

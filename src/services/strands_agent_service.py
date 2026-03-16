@@ -140,14 +140,15 @@ IMPORTANTE:
 - Use as ferramentas disponíveis para executar as ações solicitadas
 - Confirme as ações realizadas com detalhes relevantes
 - Se houver erro, explique de forma clara e sugira alternativas. Não devolva erro sistemico para o usuário final
-- CADA mensagem é independente - não há histórico de conversa anterior
-- Se o usuário responder com informações incompletas (ex: "próximo mês"), peça esclarecimento sobre qual ação ele quer realizar
+- Você tem acesso ao histórico recente da conversa para manter contexto entre mensagens
+- Use o histórico para entender referências a mensagens anteriores (ex: "sim", "esse mesmo", "pode fazer")
+- Se o usuário responder com informações incompletas (ex: "próximo mês"), use o contexto da conversa anterior para entender a intenção
 
 REGRA CRÍTICA - Coleta de Informações:
 - NUNCA invente ou assuma informações que o usuário não forneceu
 - Se uma ferramenta requer parâmetros OBRIGATÓRIOS que não foram fornecidos, PERGUNTE ao usuário
 - Parâmetros OPCIONAIS podem ser omitidos (deixe como None/null)
-- Para registrar aluno, você PRECISA de: nome completo, telefone (formato +5511999999999), email, e objetivo de treino
+- Para registrar aluno, você PRECISA de: nome completo, telefone (formato +5511999999999), email, objetivo de treino e dia de vencimento da mensalidade (1-31)
 - Para agendar sessão, você PRECISA de: student_id (ID do aluno), data/hora (formato ISO), duração em minutos
 - Para agendar sessão, são OPCIONAIS: local (location) e observações (notes)
 - Para registrar pagamento, você PRECISA de: student_id, valor, data, método de pagamento
@@ -162,17 +163,20 @@ Quando o trainer solicitar uma ação:
 5. Confirme o resultado em linguagem natural
 
 Exemplos de interações:
-- "Registrar novo aluno João" → PERGUNTE: "Para registrar o aluno João, preciso do telefone (formato +5511999999999), email e objetivo de treino. Pode me passar essas informações?"
-- "Registrar aluno João Silva, telefone +5511988887777, email joao@email.com, objetivo: ganhar massa" → use register_student com todos os parâmetros
+- "Registrar novo aluno João" → PERGUNTE: "Para registrar o aluno João, preciso do telefone (formato +5511999999999), email, objetivo de treino e dia de vencimento da mensalidade (1-31). Pode me passar essas informações?"
+- "Registrar aluno João Silva, telefone +5511988887777, email joao@email.com, objetivo: ganhar massa, vencimento dia 10" → use register_student com todos os parâmetros
 - "Agendar sessão com Juliana Nano dia 11/03/2026 às 08:00, 60 minutos" → use schedule_session com student_name="Juliana Nano", date="2026-03-11", time="08:00", duration_minutes=60
-- "Agendar sessão semanalmente toda terça-feira com Juliana Nano às 18:00, 60 minutos" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira", time="18:00", duration_minutes=60, number_of_weeks=4 (ou pergunte quantas semanas)
+- "Agendar sessão semanalmente toda terça-feira com Juliana Nano às 18:00, 60 minutos" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira", time="18:00", duration_minutes=60
+- "Agendar sessão toda terça e quinta com Juliana Nano das 17:00 às 18:00 recorrente" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira, quinta-feira", time="17:00", duration_minutes=60
 - "Cancelar sessão xyz789" → use cancel_session
 - "Ver meus alunos" → use view_students
 - "Registrar pagamento de R$100 do Pedro" → use register_payment
 
 IMPORTANTE - Agendamentos Recorrentes:
 - Para sessões semanais/recorrentes, use schedule_recurring_session
-- Pergunte quantas semanas agendar se não especificado (sugestão: 4 semanas = 1 mês)
+- Suporta múltiplos dias da semana separados por vírgula (ex: "terça-feira, quinta-feira")
+- Se o número de semanas não for especificado, o padrão é 12 semanas (3 meses)
+- Quando o usuário disser "recorrente" sem especificar período, use o padrão de 12 semanas
 - Dias da semana aceitos: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo
 - A ferramenta cria múltiplas sessões automaticamente e detecta conflitos
 
@@ -250,9 +254,9 @@ IMPORTANTE - Interpretação de Datas e Horários:
         # and is decorated with @tool so Strands can recognize it
         
         @tool
-        def register_student(name: str, phone_number: str, email: str, training_goal: str) -> Dict[str, Any]:
+        def register_student(name: str, phone_number: str, email: str, training_goal: str, payment_due_day: int = None) -> Dict[str, Any]:
             """Register a new student and link them to the trainer."""
-            return student_tools.register_student(trainer_id, name, phone_number, email, training_goal)
+            return student_tools.register_student(trainer_id, name, phone_number, email, training_goal, payment_due_day)
         
         @tool
         def view_students() -> Dict[str, Any]:
@@ -265,10 +269,11 @@ IMPORTANTE - Interpretação de Datas e Horários:
             name: str = None,
             email: str = None,
             phone_number: str = None,
-            training_goal: str = None
+            training_goal: str = None,
+            payment_due_day: int = None
         ) -> Dict[str, Any]:
             """Update student information."""
-            return student_tools.update_student(trainer_id, student_id, name, email, phone_number, training_goal)
+            return student_tools.update_student(trainer_id, student_id, name, email, phone_number, training_goal, payment_due_day)
         
         @tool
         def schedule_session(
@@ -287,10 +292,10 @@ IMPORTANTE - Interpretação de Datas e Horários:
             day_of_week: str,
             time: str,
             duration_minutes: int,
-            number_of_weeks: int,
+            number_of_weeks: int = None,
             location: str = None
         ) -> Dict[str, Any]:
-            """Schedule recurring training sessions on the same day and time each week."""
+            """Schedule recurring training sessions on the same day(s) and time each week. Supports multiple days comma-separated (e.g. 'terça-feira, quinta-feira'). If number_of_weeks is not provided, defaults to 12 weeks (3 months)."""
             return session_tools.schedule_recurring_session(trainer_id, student_name, day_of_week, time, duration_minutes, number_of_weeks, location)
         
         @tool
@@ -387,7 +392,8 @@ IMPORTANTE - Interpretação de Datas e Horários:
         self,
         trainer_id: str,
         message: str,
-        phone_number: Optional[str] = None
+        phone_number: Optional[str] = None,
+        conversation_history: Optional[list] = None
     ) -> Dict[str, Any]:
         """
         Process a WhatsApp message through the Strands agent.
@@ -515,6 +521,15 @@ IMPORTANTE - Interpretação de Datas e Horários:
             
             # Create agent with trainer-specific tools (multi-tenancy enforcement)
             agent = self._create_agent_for_trainer(trainer_id)
+            
+            # Inject conversation history if available
+            if conversation_history:
+                agent.messages = conversation_history
+                logger.info(
+                    "Conversation history loaded",
+                    trainer_id=trainer_id,
+                    history_count=len(conversation_history),
+                )
             
             # Set up timeout protection (30 seconds - increased from 10 for complex operations)
             # Note: WhatsApp has ~20s timeout, but we allow 30s for complex multi-tool operations

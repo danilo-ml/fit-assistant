@@ -70,6 +70,7 @@ class Student(BaseModel):
     email: str
     phone_number: str
     training_goal: str
+    payment_due_day: Optional[int] = None  # Day of month (1-31) for payment due date
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -82,9 +83,17 @@ class Student(BaseModel):
             raise ValueError('Phone number must be in E.164 format')
         return v
     
+    @field_validator('payment_due_day')
+    @classmethod
+    def validate_payment_due_day(cls, v: Optional[int]) -> Optional[int]:
+        """Validate payment due day is between 1 and 31."""
+        if v is not None and (v < 1 or v > 31):
+            raise ValueError('Payment due day must be between 1 and 31')
+        return v
+    
     def to_dynamodb(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
-        return {
+        item = {
             'PK': f'STUDENT#{self.student_id}',
             'SK': 'METADATA',
             'entity_type': self.entity_type,
@@ -96,6 +105,9 @@ class Student(BaseModel):
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
+        if self.payment_due_day is not None:
+            item['payment_due_day'] = self.payment_due_day
+        return item
     
     @classmethod
     def from_dynamodb(cls, item: Dict[str, Any]) -> 'Student':
@@ -106,6 +118,7 @@ class Student(BaseModel):
             email=item['email'],
             phone_number=item['phone_number'],
             training_goal=item['training_goal'],
+            payment_due_day=item.get('payment_due_day'),
             created_at=datetime.fromisoformat(item['created_at']),
             updated_at=datetime.fromisoformat(item['updated_at'])
         )
@@ -244,7 +257,7 @@ class Payment(BaseModel):
     trainer_id: str
     student_id: str
     student_name: str
-    amount: float = Field(gt=0)
+    amount: float = Field(ge=0)
     currency: str = "USD"
     payment_date: str  # ISO date format YYYY-MM-DD
     payment_status: Literal["pending", "confirmed"] = "pending"

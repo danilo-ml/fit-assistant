@@ -33,6 +33,7 @@ from services.conversation_handlers import (
     TrainerHandler,
     StudentHandler,
 )
+from services.conversation_state import ConversationStateManager
 from services.strands_agent_service import get_strands_agent_service
 from models.dynamodb_client import DynamoDBClient
 from utils.logging import get_logger
@@ -356,8 +357,17 @@ def process_confirmation_response(
             }
         )
         
-        # Get student name for the ack message
+        # Get student name and session time for the ack message
         student_name = pending_session.get('student_name', 'aluno')
+        session_dt = pending_session.get('session_datetime', '')
+        session_time_str = ''
+        if session_dt:
+            try:
+                from datetime import datetime as dt_parse
+                parsed_dt = dt_parse.fromisoformat(session_dt)
+                session_time_str = f" ({parsed_dt.strftime('%d/%m às %H:%M')})"
+            except (ValueError, TypeError):
+                pass
         
         logger.info(
             "Session confirmation processed",
@@ -368,9 +378,9 @@ def process_confirmation_response(
         
         # Send acknowledgment to trainer
         if mapped == 'YES':
-            ack_message = f"✅ Sessão com {student_name} marcada como realizada."
+            ack_message = f"✅ Sessão com {student_name}{session_time_str} marcada como realizada."
         else:
-            ack_message = f"❌ Sessão com {student_name} marcada como não realizada."
+            ack_message = f"❌ Sessão com {student_name}{session_time_str} marcada como não realizada."
         
         twilio_client.send_message(
             to=phone_number,
@@ -414,7 +424,7 @@ def find_pending_confirmation_session_for_trainer(
         items = response.get('Items', [])
         
         if items:
-            items.sort(key=lambda x: x.get('session_datetime', ''), reverse=True)
+            items.sort(key=lambda x: x.get('session_datetime', ''))
             return items[0]
         
         return None
@@ -533,6 +543,7 @@ def _handle_trainer(
 
     Uses StrandsAgentService to process trainer messages with a single agent
     that has all FitAgent tools (student, session, payment management).
+    Loads conversation history for contextual understanding.
 
     Args:
         trainer_id: Trainer's unique identifier
@@ -551,15 +562,62 @@ def _handle_trainer(
         phone_number=phone_number,
     )
     
+    message_text = message_body.get("body", "")
+    
+    # Load conversation history from state manager
+    conversation_history = []
+    if phone_number:
+        try:
+            state_manager = ConversationStateManager(db_client)
+            history_entries = state_manager.get_message_history(phone_number)
+            
+            # Format history as Strands Message list
+            for entry in history_entries:
+                conversation_history.append({
+                    "role": entry.role,
+                    "content": [{"text": entry.content}]
+                })
+            
+            if conversation_history:
+                logger.info(
+                    "Loaded conversation history",
+                    phone_number=phone_number,
+                    history_count=len(conversation_history),
+                )
+        except Exception as e:
+            logger.warning(
+                "Failed to load conversation history, proceeding without it",
+                phone_number=phone_number,
+                error=str(e),
+            )
+            conversation_history = []
+    
     # Get Strands Agent Service
     agent_service = get_strands_agent_service()
     
-    # Process message through agent
+    # Process message through agent with history
     result = agent_service.process_message(
         trainer_id=trainer_id,
-        message=message_body.get("body", ""),
-        phone_number=phone_number
+        message=message_text,
+        phone_number=phone_number,
+        conversation_history=conversation_history if conversation_history else None,
     )
+    
+    # Save messages to conversation state
+    if phone_number:
+        try:
+            state_manager = ConversationStateManager(db_client)
+            # Save user message
+            state_manager.add_message(phone_number, "user", message_text)
+            # Save assistant response
+            if result.get('success') and result.get('response'):
+                state_manager.add_message(phone_number, "assistant", result['response'])
+        except Exception as e:
+            logger.warning(
+                "Failed to save conversation history",
+                phone_number=phone_number,
+                error=str(e),
+            )
     
     # Handle result
     if result.get('success'):

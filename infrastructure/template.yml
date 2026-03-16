@@ -818,6 +818,52 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt SessionConfirmationRule.Arn
 
+  # Payment Reminder Lambda Function
+  PaymentReminderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'fitagent-payment-reminder-${Environment}'
+      Runtime: python3.12
+      Handler: handlers.payment_reminder.lambda_handler
+      Role: !GetAtt SessionConfirmationLambdaRole.Arn
+      Timeout: 120
+      MemorySize: 512
+      Code:
+        S3Bucket: fitagent-lambda-deployments-429649512384
+        S3Key: production/lambda-latest.zip
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref FitAgentTable
+          TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # EventBridge Rule for Daily Payment Reminder (runs at 10:00 UTC = 07:00 BRT)
+  PaymentReminderRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'payment-reminder-trigger-${Environment}'
+      Description: Triggers payment reminder handler daily at 10:00 UTC
+      ScheduleExpression: "cron(0 10 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt PaymentReminderFunction.Arn
+          Id: PaymentReminderTarget
+      EventBusName: default
+
+  # Lambda Permission for Payment Reminder EventBridge Invocation
+  PaymentReminderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PaymentReminderFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PaymentReminderRule.Arn
+
   # API Gateway for Webhook
   WebhookApi:
     Type: AWS::ApiGateway::RestApi

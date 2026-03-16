@@ -30,7 +30,7 @@ dynamodb_client = DynamoDBClient(
 
 @tool
 def register_student(
-    trainer_id: str, name: str, phone_number: str, email: str, training_goal: str
+    trainer_id: str, name: str, phone_number: str, email: str, training_goal: str, payment_due_day: int = None
 ) -> Dict[str, Any]:
     """
     Register a new student and link them to the trainer.
@@ -45,6 +45,7 @@ def register_student(
         phone_number: Student's phone in E.164 format (e.g., "+5511999999999")
         email: Student's email address (e.g., "joao@example.com")
         training_goal: Student's training goal (e.g., "Perder peso e ganhar massa muscular")
+        payment_due_day: Day of month (1-31) when student's payment is due (e.g., 10 for day 10)
 
     Returns:
         dict: {
@@ -54,7 +55,8 @@ def register_student(
                 'name': str,
                 'phone_number': str,
                 'email': str,
-                'training_goal': str
+                'training_goal': str,
+                'payment_due_day': int or None
             },
             'error': str (optional, only present if success=False)
         }
@@ -62,7 +64,7 @@ def register_student(
     Examples:
         When trainer says: "Registrar novo aluno João Silva"
         When trainer says: "Adicionar aluna Maria com telefone +5511988887777"
-        When trainer says: "Cadastrar aluno Pedro, email pedro@email.com, objetivo: ganhar massa"
+        When trainer says: "Cadastrar aluno Pedro, email pedro@email.com, objetivo: ganhar massa, vencimento dia 10"
     """
     try:
         # Sanitize all string inputs
@@ -79,6 +81,14 @@ def register_student(
         phone_number = sanitized_params["phone_number"]
         email = sanitized_params["email"]
         training_goal = sanitized_params["training_goal"]
+
+        # Validate payment_due_day if provided
+        if payment_due_day is not None:
+            if not isinstance(payment_due_day, int) or payment_due_day < 1 or payment_due_day > 31:
+                return {
+                    "success": False,
+                    "error": "Dia de vencimento deve ser um número entre 1 e 31",
+                }
 
         # Validate required fields
         if not name:
@@ -137,6 +147,7 @@ def register_student(
                     "phone_number": student_data["phone_number"],
                     "email": student_data["email"],
                     "training_goal": student_data["training_goal"],
+                    "payment_due_day": student_data.get("payment_due_day"),
                 },
             }
 
@@ -148,7 +159,8 @@ def register_student(
 
         # Create new student entity
         student = Student(
-            name=name, phone_number=phone_number, email=email, training_goal=training_goal
+            name=name, phone_number=phone_number, email=email, training_goal=training_goal,
+            payment_due_day=payment_due_day
         )
 
         # Save student to DynamoDB
@@ -168,6 +180,7 @@ def register_student(
                 "phone_number": student.phone_number,
                 "email": student.email,
                 "training_goal": student.training_goal,
+                "payment_due_day": student.payment_due_day,
             },
         }
 
@@ -246,6 +259,7 @@ def view_students(trainer_id: str) -> Dict[str, Any]:
                         "phone_number": student_data["phone_number"],
                         "email": student_data["email"],
                         "training_goal": student_data["training_goal"],
+                        "payment_due_day": student_data.get("payment_due_day"),
                         "created_at": student_data.get("created_at", ""),
                     }
                 )
@@ -265,13 +279,14 @@ def update_student(
     email: str = None,
     phone_number: str = None,
     training_goal: str = None,
+    payment_due_day: int = None,
 ) -> Dict[str, Any]:
     """
     Update student information.
     
     Use this tool when the trainer wants to modify a student's details such as
-    name, email, phone number, or training goal. At least one field must be provided
-    for update. Only updates the fields that are provided.
+    name, email, phone number, training goal, or payment due day. At least one field
+    must be provided for update. Only updates the fields that are provided.
 
     Args:
         trainer_id: Trainer identifier (injected automatically by the service)
@@ -280,6 +295,7 @@ def update_student(
         email: Updated student email (optional, e.g., "joao.novo@example.com")
         phone_number: Updated phone in E.164 format (optional, e.g., "+5511988887777")
         training_goal: Updated training goal (optional, e.g., "Perder 10kg em 3 meses")
+        payment_due_day: Day of month (1-31) when student's payment is due (optional, e.g., 10)
 
     Returns:
         dict: {
@@ -290,6 +306,7 @@ def update_student(
                 'phone_number': str,
                 'email': str,
                 'training_goal': str,
+                'payment_due_day': int or None,
                 'updated_at': str
             },
             'error': str (optional, only present if success=False)
@@ -299,7 +316,7 @@ def update_student(
         When trainer says: "Atualizar objetivo do aluno João para perder peso"
         When trainer says: "Mudar email do aluno abc123 para novo@email.com"
         When trainer says: "Alterar telefone da Maria para +5511999998888"
-        When trainer says: "Atualizar dados do aluno xyz789"
+        When trainer says: "Mudar vencimento do aluno para dia 15"
     """
     try:
         # Verify trainer exists
@@ -321,11 +338,19 @@ def update_student(
             }
 
         # Check if at least one field is provided for update
-        if not any([name, email, phone_number, training_goal]):
+        if not any([name, email, phone_number, training_goal, payment_due_day]):
             return {
                 "success": False,
                 "error": "At least one field must be provided for update",
             }
+
+        # Validate payment_due_day if provided
+        if payment_due_day is not None:
+            if not isinstance(payment_due_day, int) or payment_due_day < 1 or payment_due_day > 31:
+                return {
+                    "success": False,
+                    "error": "Dia de vencimento deve ser um número entre 1 e 31",
+                }
 
         # Sanitize inputs if provided
         update_params = {}
@@ -373,6 +398,7 @@ def update_student(
             email=sanitized_params.get("email", student_data["email"]),
             phone_number=sanitized_params.get("phone_number", student_data["phone_number"]),
             training_goal=sanitized_params.get("training_goal", student_data["training_goal"]),
+            payment_due_day=payment_due_day if payment_due_day is not None else student_data.get("payment_due_day"),
             created_at=datetime.fromisoformat(student_data["created_at"]),
             updated_at=datetime.utcnow(),
         )
@@ -388,6 +414,7 @@ def update_student(
                 "phone_number": updated_student.phone_number,
                 "email": updated_student.email,
                 "training_goal": updated_student.training_goal,
+                "payment_due_day": updated_student.payment_due_day,
                 "updated_at": updated_student.updated_at.isoformat(),
             },
         }
