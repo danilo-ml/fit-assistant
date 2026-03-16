@@ -98,7 +98,8 @@ class StrandsAgentService:
                 self.model = BedrockModel(
                     model_id=self.model_id,
                     region_name=self.region,
-                    endpoint_url=self.endpoint_url
+                    endpoint_url=self.endpoint_url,
+                    temperature=0.5,
                 )
             except ValueError as e:
                 # Handle OpenTelemetry propagator initialization errors
@@ -112,7 +113,8 @@ class StrandsAgentService:
                     self.model = BedrockModel(
                         model_id=self.model_id,
                         region_name=self.region,
-                        endpoint_url=self.endpoint_url
+                        endpoint_url=self.endpoint_url,
+                        temperature=0.5,
                     )
                 else:
                     # Re-raise if it's a different ValueError
@@ -363,7 +365,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
             model=self.model,
             system_prompt=system_prompt_with_context,
             tools=tools,
-            temperature=0.5 # Lower temperature for more deterministic responses
         )
         
         logger.info(

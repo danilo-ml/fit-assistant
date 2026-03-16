@@ -110,14 +110,8 @@ class OnboardingHandler:
         if step == "user_type":
             return self._handle_user_type_selection(phone_number, message_text, request_id)
         
-        elif step == "trainer_name":
-            return self._handle_trainer_name(phone_number, message_text, request_id)
-        
-        elif step == "trainer_email":
-            return self._handle_trainer_email(phone_number, message_text, request_id)
-        
-        elif step == "trainer_business":
-            return self._handle_trainer_business(phone_number, message_text, request_id)
+        elif step == "trainer_info":
+            return self._handle_trainer_info(phone_number, message_body.get("body", "").strip(), request_id)
         
         else:
             # Unknown step - restart onboarding
@@ -148,16 +142,23 @@ class OnboardingHandler:
         """Handle user type selection (trainer or student)."""
         # Check if user selected trainer
         if "1" in message_text or "trainer" in message_text:
-            # Start trainer registration
+            # Start trainer registration - ask all info at once
             self.state_manager.update_state(
                 phone_number=phone_number,
                 state="ONBOARDING",
-                context={"step": "trainer_name", "user_type": "trainer"},
+                context={"step": "trainer_info", "user_type": "trainer"},
             )
             
             return (
                 "Ótimo! Vamos configurar sua conta como trainer. 💪\n\n"
-                "Qual é o seu nome completo?"
+                "Por favor, envie as seguintes informações (uma por linha):\n\n"
+                "1️⃣ Nome completo\n"
+                "2️⃣ E-mail\n"
+                "3️⃣ Nome do seu negócio\n\n"
+                "Exemplo:\n"
+                "João Silva\n"
+                "joao@email.com\n"
+                "João Personal Trainer"
             )
         
         # Check if user selected student
@@ -178,75 +179,47 @@ class OnboardingHandler:
                 "2️⃣ para Aluno"
             )
     
-    def _handle_trainer_name(
+    def _handle_trainer_info(
         self,
         phone_number: str,
         message_text: str,
         request_id: str,
     ) -> str:
-        """Handle trainer name collection."""
-        # Validate name (basic check)
-        if len(message_text) < 2:
-            return "Por favor, forneça seu nome completo (pelo menos 2 caracteres)."
-        
-        # Store name and move to next step
-        state = self.state_manager.get_state(phone_number)
-        context = state.context
-        context["trainer_name"] = message_text.title()
-        context["step"] = "trainer_email"
-        
-        self.state_manager.update_state(
-            phone_number=phone_number,
-            state="ONBOARDING",
-            context=context,
-        )
-        
-        return f"Prazer em conhecê-lo, {context['trainer_name']}! 👋\n\nQual é o seu endereço de e-mail?"
-    
-    def _handle_trainer_email(
-        self,
-        phone_number: str,
-        message_text: str,
-        request_id: str,
-    ) -> str:
-        """Handle trainer email collection."""
-        # Basic email validation
-        if "@" not in message_text or "." not in message_text:
-            return "Por favor, forneça um endereço de e-mail válido (ex: trainer@example.com)."
-        
-        # Store email and move to next step
-        state = self.state_manager.get_state(phone_number)
-        context = state.context
-        context["trainer_email"] = message_text.lower()
-        context["step"] = "trainer_business"
-        
-        self.state_manager.update_state(
-            phone_number=phone_number,
-            state="ONBOARDING",
-            context=context,
-        )
-        
-        return "Perfeito! Qual é o nome do seu negócio? (É assim que os alunos verão você)"
-    
-    def _handle_trainer_business(
-        self,
-        phone_number: str,
-        message_text: str,
-        request_id: str,
-    ) -> str:
-        """Handle trainer business name and complete registration."""
+        """Handle trainer info collection (name, email, business name) in a single message."""
+        lines = [line.strip() for line in message_text.strip().splitlines() if line.strip()]
+
+        if len(lines) < 3:
+            return (
+                "Não consegui identificar todas as informações. "
+                "Por favor, envie as 3 informações, uma por linha:\n\n"
+                "1️⃣ Nome completo\n"
+                "2️⃣ E-mail\n"
+                "3️⃣ Nome do seu negócio\n\n"
+                "Exemplo:\n"
+                "João Silva\n"
+                "joao@email.com\n"
+                "João Personal Trainer"
+            )
+
+        trainer_name = lines[0].title()
+        trainer_email = lines[1].lower()
+        business_name = lines[2].title()
+
+        # Validate name
+        if len(trainer_name) < 2:
+            return "O nome precisa ter pelo menos 2 caracteres. Por favor, envie as 3 informações novamente."
+
+        # Validate email
+        if "@" not in trainer_email or "." not in trainer_email:
+            return (
+                "O e-mail informado não parece válido. "
+                "Por favor, envie as 3 informações novamente com um e-mail válido (ex: trainer@example.com)."
+            )
+
         # Validate business name
-        if len(message_text) < 2:
-            return "Por favor, forneça o nome do seu negócio (pelo menos 2 caracteres)."
-        
-        # Get collected information
-        state = self.state_manager.get_state(phone_number)
-        context = state.context
-        
-        trainer_name = context.get("trainer_name")
-        trainer_email = context.get("trainer_email")
-        business_name = message_text.title()
-        
+        if len(business_name) < 2:
+            return "O nome do negócio precisa ter pelo menos 2 caracteres. Por favor, envie as 3 informações novamente."
+
         # Validate phone number format
         if not PhoneNumberValidator.validate(phone_number):
             normalized = PhoneNumberValidator.normalize(phone_number)
@@ -261,12 +234,12 @@ class OnboardingHandler:
                     "Houve um problema com o formato do seu número de telefone. "
                     "Por favor, entre em contato com o suporte para assistência."
                 )
-        
+
         # Create trainer record
         try:
             trainer_id = str(uuid.uuid4())
             now = datetime.utcnow()
-            
+
             trainer = Trainer(
                 trainer_id=trainer_id,
                 name=trainer_name,
@@ -276,17 +249,16 @@ class OnboardingHandler:
                 created_at=now,
                 updated_at=now,
             )
-            
-            # Save to DynamoDB (use to_dynamodb() method for proper formatting)
+
             self.dynamodb.put_trainer(trainer.to_dynamodb())
-            
+
             logger.info(
                 "Trainer registered successfully",
                 trainer_id=trainer_id,
                 phone_number=phone_number,
                 request_id=request_id,
             )
-            
+
             # Update conversation state to trainer menu
             self.state_manager.update_state(
                 phone_number=phone_number,
@@ -295,8 +267,7 @@ class OnboardingHandler:
                 user_type="TRAINER",
                 context={"onboarding_completed": True},
             )
-            
-            # Send success message with menu
+
             return (
                 f"🎉 Bem-vindo ao FitAgent, {trainer_name}!\n\n"
                 f"Sua conta está ativa agora. Posso ajudá-lo com:\n\n"
@@ -307,7 +278,7 @@ class OnboardingHandler:
                 "📆 Conectar seu calendário (Google/Outlook)\n\n"
                 "O que você gostaria de fazer? Apenas me diga com suas próprias palavras!"
             )
-        
+
         except Exception as e:
             logger.error(
                 "Failed to register trainer",
@@ -315,7 +286,7 @@ class OnboardingHandler:
                 error=str(e),
                 request_id=request_id,
             )
-            
+
             return (
                 "Desculpe, houve um erro ao criar sua conta. "
                 "Por favor, tente novamente ou entre em contato com o suporte se o problema persistir."

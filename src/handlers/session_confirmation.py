@@ -3,13 +3,13 @@ Session Confirmation Lambda Handler.
 
 This handler is triggered by EventBridge every 5 minutes to:
 1. Find sessions that ended 1 hour ago
-2. Send confirmation requests to students via WhatsApp
+2. Send confirmation requests to trainers via WhatsApp
 3. Update session status to pending_confirmation
 
 The confirmation flow:
 - Session ends at time T
-- At T+1 hour, send confirmation request to student
-- Student replies YES (completed) or NO (missed)
+- At T+1 hour, send confirmation request to trainer
+- Trainer replies YES (completed) or NO (missed)
 - Update session confirmation_status accordingly
 
 Validates: Requirements 7.1.1, 7.1.2, 7.1.3, 7.1.7, 7.1.8
@@ -171,47 +171,47 @@ def send_confirmation_request(
     db_client: DynamoDBClient,
 ) -> None:
     """
-    Send confirmation request to student and update session status.
+    Send confirmation request to trainer and update session status.
     
     Args:
         session: Session object
         twilio_client: Twilio client
         db_client: DynamoDB client
     """
-    # Get student phone number
+    # Get student name
     student_item = db_client.get_item(
         pk=f"TRAINER#{session.trainer_id}",
         sk=f"STUDENT#{session.student_id}",
     )
     
-    if not student_item:
-        logger.error(
-            "Student not found for confirmation",
-            session_id=session.session_id,
-            student_id=session.student_id,
-        )
-        return
+    student_name = student_item.get('name', 'aluno') if student_item else 'aluno'
     
-    student_phone = student_item.get('phone_number')
-    
-    # Get trainer name
+    # Get trainer phone number
     trainer_item = db_client.get_item(
         pk=f"TRAINER#{session.trainer_id}",
         sk="METADATA",
     )
     
-    trainer_name = trainer_item.get('name', 'your trainer') if trainer_item else 'your trainer'
+    if not trainer_item:
+        logger.error(
+            "Trainer not found for confirmation",
+            session_id=session.session_id,
+            trainer_id=session.trainer_id,
+        )
+        return
+    
+    trainer_phone = trainer_item.get('phone_number')
     
     # Format confirmation message
     message = format_confirmation_message(
-        trainer_name=trainer_name,
+        student_name=student_name,
         session_datetime=session.session_datetime,
         duration_minutes=session.duration_minutes,
     )
     
-    # Send via Twilio
+    # Send via Twilio to trainer
     twilio_client.send_message(
-        to=student_phone,
+        to=trainer_phone,
         body=message,
     )
     
@@ -229,33 +229,34 @@ def send_confirmation_request(
     )
     
     logger.info(
-        "Confirmation request sent",
+        "Confirmation request sent to trainer",
         session_id=session.session_id,
-        student_phone=student_phone,
+        trainer_phone=trainer_phone,
     )
 
 
 def format_confirmation_message(
-    trainer_name: str,
+    student_name: str,
     session_datetime: datetime,
     duration_minutes: int,
 ) -> str:
     """
-    Format confirmation request message.
+    Format confirmation request message for trainer.
     
     Args:
-        trainer_name: Trainer's name
+        student_name: Student's name
         session_datetime: Session date and time
         duration_minutes: Session duration
     
     Returns:
         Formatted message string
     """
-    date_str = session_datetime.strftime("%A, %B %d")
-    time_str = session_datetime.strftime("%I:%M %p")
+    date_str = session_datetime.strftime("%d/%m/%Y")
+    time_str = session_datetime.strftime("%H:%M")
     
     return (
-        f"Hi! Did your {duration_minutes}-minute training session with "
-        f"{trainer_name} on {date_str} at {time_str} happen?\n\n"
-        f"Reply YES if it happened, or NO if it was missed."
+        f"📋 Confirmação de sessão\n\n"
+        f"A sessão de {duration_minutes} minutos com {student_name} "
+        f"em {date_str} às {time_str} aconteceu?\n\n"
+        f"Responda SIM ou NÃO."
     )

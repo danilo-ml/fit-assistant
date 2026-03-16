@@ -285,10 +285,10 @@ def process_confirmation_response(
     message: str,
 ) -> bool:
     """
-    Detect and process session confirmation responses.
+    Detect and process session confirmation responses from trainers.
     
     Args:
-        phone_number: Student's phone number
+        phone_number: Trainer's phone number
         message: User's message
     
     Returns:
@@ -297,11 +297,17 @@ def process_confirmation_response(
     # Normalize message
     normalized = message.strip().upper()
     
-    # Check if it's a YES/NO response
-    if normalized not in ['YES', 'NO']:
+    # Map PT-BR responses to standard values
+    response_map = {
+        'YES': 'YES', 'SIM': 'YES', 'S': 'YES',
+        'NO': 'NO', 'NÃO': 'NO', 'NAO': 'NO', 'N': 'NO',
+    }
+    
+    mapped = response_map.get(normalized)
+    if not mapped:
         return False
     
-    # Lookup student by phone number
+    # Lookup trainer by phone number
     try:
         response = db_client.table.query(
             IndexName='phone-number-index',
@@ -313,22 +319,20 @@ def process_confirmation_response(
         if not items:
             return False
         
-        # Find student entity
-        student_item = None
+        # Find trainer entity
+        trainer_item = None
         for item in items:
-            if item.get('entity_type') == 'STUDENT':
-                student_item = item
+            if item.get('entity_type') == 'TRAINER':
+                trainer_item = item
                 break
         
-        if not student_item:
+        if not trainer_item:
             return False
         
-        student_id = student_item.get('student_id')
-        trainer_id = student_item.get('trainer_id')
+        trainer_id = trainer_item.get('trainer_id')
         
-        # Find pending confirmation session for this student
-        pending_session = find_pending_confirmation_session(
-            student_id=student_id,
+        # Find pending confirmation session for this trainer
+        pending_session = find_pending_confirmation_session_for_trainer(
             trainer_id=trainer_id,
         )
         
@@ -337,14 +341,14 @@ def process_confirmation_response(
         
         # Update session based on response
         now = datetime.utcnow()
-        confirmation_status = 'completed' if normalized == 'YES' else 'missed'
+        confirmation_status = 'completed' if mapped == 'YES' else 'missed'
         
         db_client.update_item(
             pk=f"TRAINER#{trainer_id}",
             sk=f"SESSION#{pending_session['session_id']}",
             updates={
                 'confirmation_status': confirmation_status,
-                'status': confirmation_status,  # Also update main status
+                'status': confirmation_status,
                 'confirmed_at': now.isoformat(),
                 'confirmation_response': message,
                 'updated_at': now.isoformat(),
@@ -352,19 +356,21 @@ def process_confirmation_response(
             }
         )
         
+        # Get student name for the ack message
+        student_name = pending_session.get('student_name', 'aluno')
+        
         logger.info(
             "Session confirmation processed",
             session_id=pending_session['session_id'],
             confirmation_status=confirmation_status,
-            student_id=student_id,
+            trainer_id=trainer_id,
         )
         
-        # Send acknowledgment
-        ack_message = (
-            "Thanks for confirming! " +
-            ("Session marked as completed." if normalized == 'YES' 
-             else "Session marked as missed.")
-        )
+        # Send acknowledgment to trainer
+        if mapped == 'YES':
+            ack_message = f"✅ Sessão com {student_name} marcada como realizada."
+        else:
+            ack_message = f"❌ Sessão com {student_name} marcada como não realizada."
         
         twilio_client.send_message(
             to=phone_number,
@@ -382,38 +388,32 @@ def process_confirmation_response(
         return False
 
 
-def find_pending_confirmation_session(
-    student_id: str,
+def find_pending_confirmation_session_for_trainer(
     trainer_id: str,
 ) -> Dict[str, Any]:
     """
-    Find pending confirmation session for a student.
+    Find the most recent pending confirmation session for a trainer.
     
     Args:
-        student_id: Student identifier
         trainer_id: Trainer identifier
     
     Returns:
         Session item dict or None
     """
     try:
-        # Query sessions for this trainer and student
         response = db_client.table.query(
             KeyConditionExpression='PK = :pk AND begins_with(SK, :sk_prefix)',
-            FilterExpression='student_id = :student_id AND confirmation_status = :status',
+            FilterExpression='confirmation_status = :status',
             ExpressionAttributeValues={
                 ':pk': f'TRAINER#{trainer_id}',
                 ':sk_prefix': 'SESSION#',
-                ':student_id': student_id,
                 ':status': 'pending_confirmation',
             }
         )
         
         items = response.get('Items', [])
         
-        # Return the most recent pending confirmation session
         if items:
-            # Sort by session_datetime descending
             items.sort(key=lambda x: x.get('session_datetime', ''), reverse=True)
             return items[0]
         
@@ -422,7 +422,6 @@ def find_pending_confirmation_session(
     except Exception as e:
         logger.error(
             "Error finding pending confirmation session",
-            student_id=student_id,
             trainer_id=trainer_id,
             error=str(e),
         )

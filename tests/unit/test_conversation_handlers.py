@@ -115,15 +115,13 @@ class TestOnboardingHandler:
         handler.state_manager.get_state.return_value = ConversationStateFactory.create(
             state="ONBOARDING",
             context={
-                "step": "trainer_business",
-                "trainer_name": "John Doe",
-                "trainer_email": "john@example.com",
+                "step": "trainer_info",
                 "user_type": "trainer"
             }
         )
         
         phone_number = "+14155551234"
-        message_body = {"body": "Fitness Pro"}
+        message_body = {"body": "John Doe\njohn@example.com\nFitness Pro"}
         request_id = "test-123"
         
         # Act
@@ -136,10 +134,10 @@ class TestOnboardingHandler:
         
         # Verify trainer data
         trainer_data = handler.dynamodb.put_trainer.call_args[0][0]
-        assert trainer_data.name == "John Doe"
-        assert trainer_data.email == "john@example.com"
-        assert trainer_data.business_name == "Fitness Pro"
-        assert trainer_data.phone_number == "+14155551234"
+        assert trainer_data["name"] == "John Doe"
+        assert trainer_data["email"] == "john@example.com"
+        assert trainer_data["business_name"] == "Fitness Pro"
+        assert trainer_data["phone_number"] == "+14155551234"
 
 
 class TestTrainerHandler:
