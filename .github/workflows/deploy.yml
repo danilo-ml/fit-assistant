@@ -102,7 +102,10 @@ jobs:
           aws cloudformation deploy \
             --template-file infrastructure/template.yml \
             --stack-name fitagent-production \
-            --parameter-overrides file://infrastructure/parameters/production.json \
+            --parameter-overrides \
+              Environment=production \
+              BedrockModelId=anthropic.claude-3-sonnet-20240229-v1:0 \
+              DomainName=fitassistant.com.br \
             --capabilities CAPABILITY_NAMED_IAM \
             --region ${{ env.AWS_REGION }} \
             --no-fail-on-empty-changeset
