@@ -1,0 +1,27 @@
+[run]
+source = src
+omit =
+    */tests/*
+    */conftest.py
+    */__pycache__/*
+    */site-packages/*
+    */.venv/*
+    src/main.py
+    src/local_sqs_poller.py
+
+[report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 70
+
+# Coverage targets by directory
+# Overall: 70% minimum
+# src/services/: 80% minimum
+# src/tools/: 90% minimum
+# src/handlers/: 60% minimum
+# src/models/: 80% minimum
+# src/utils/: 75% minimum
+
+[html]
+directory = htmlcov

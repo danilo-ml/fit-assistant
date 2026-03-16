@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyo
 .Python
 build/
+build/**
 develop-eggs/
 dist/
 downloads/
@@ -28,10 +30,13 @@ env/
 
 # IDE
 .vscode/
+.vscode/settings.json
+.vscode/launch.json
 .idea/
 *.swp
 *.swo
 *~
+*.code-workspace
 
 # Testing
 .pytest_cache/
@@ -48,14 +53,17 @@ dmypy.json
 # Environment
 .env
 .env.local
+.env.*.local
 
 # LocalStack
 tmp/
+tmp/**
 .localstack/
 
 # AWS
 *.pem
 *.key
+*.p8
 
 # Logs
 *.log
@@ -64,6 +72,8 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+.AppleDouble
+.LSOverride
 
 # Coverage
 coverage.xml
@@ -72,6 +82,12 @@ coverage.xml
 # Documentation
 docs/_build/
 
-# Deployment
+# Deployment & Build Artifacts
 *.zip
 lambda-package/
+lambda.zip
+COMMIT_MESSAGE.txt
+
+# Infrastructure Parameters (contain secrets)
+infrastructure/parameters/*.json
+!infrastructure/parameters/*.example.json

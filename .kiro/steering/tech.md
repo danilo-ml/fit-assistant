@@ -55,29 +55,34 @@ Serverless event-driven architecture on AWS with WhatsApp integration via Twilio
 
 ### Local Development
 ```bash
-# Start local environment
-docker-compose up
+# Start local environment (Docker Compose - STANDARD METHOD)
+make start
 
-# Run API server locally
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+# View logs
+make logs
+
+# Stop services
+make stop
+
+# Restart services
+make restart
+
+# Clean slate (remove volumes)
+make clean
 ```
 
 ### Testing
 ```bash
-# Run all tests
-pytest
+# Run all tests (inside Docker container)
+make test
+
+# Run specific test types
+make test-unit
+make test-integration
+make test-property
 
 # Run with coverage report
-pytest --cov=src --cov-report=html --cov-report=term
-
-# Run only unit tests
-pytest tests/unit/
-
-# Run property-based tests
-pytest tests/property/ -v
-
-# Run specific test
-pytest tests/unit/test_student_tools.py::test_register_student -v
+make test-coverage
 ```
 
 ### Code Quality

@@ -1,0 +1,86 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Bedrock Uses Real AWS Endpoint in LocalStack
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the bug exists
+  - **Scoped PBT Approach**: Scope the property to LocalStack environment with WhatsApp message processing
+  - Test that BedrockModel is initialized WITHOUT endpoint_url parameter in LocalStack environment (from Bug Condition in design)
+  - Test that Bedrock API calls fail with NotImplementedError when directed to LocalStack
+  - Test that generic Portuguese error message is returned instead of AI response
+  - The test assertions should match the Expected Behavior Properties from design: BedrockModel SHALL be initialized with endpoint_url parameter pointing to real AWS Bedrock endpoint
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found:
+    - BedrockModel initialization missing endpoint_url parameter
+    - Bedrock calls directed to LocalStack instead of real AWS
+    - NotImplementedError raised by LocalStack
+    - Generic error message returned to user
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 2.1, 2.2, 2.3, 2.4_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Production and Other Services Unchanged
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs:
+    - Production environment message processing (if accessible)
+    - DynamoDB operations using LocalStack endpoint
+    - S3 operations using LocalStack endpoint
+    - SQS operations using LocalStack endpoint
+    - Non-Bedrock error handling (validation, timeout, connection errors)
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements:
+    - Production environment uses default AWS Bedrock endpoint (no explicit endpoint_url)
+    - DynamoDB, S3, SQS continue using LocalStack endpoint in local development
+    - Error handling for non-Bedrock errors remains unchanged
+    - Tool execution logic (student_tools, session_tools, payment_tools) remains unchanged
+  - Property-based testing generates many test cases for stronger guarantees
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4_
+
+- [x] 3. Fix for BedrockModel endpoint_url parameter in LocalStack
+
+  - [x] 3.1 Implement the fix in StrandsAgentService
+    - Modify BedrockModel initialization in `src/services/strands_agent_service.py` (lines 88-91)
+    - Add `endpoint_url=self.endpoint_url` parameter to BedrockModel constructor
+    - Verify that BedrockModel class accepts endpoint_url parameter (check Strands SDK documentation)
+    - If BedrockModel doesn't accept endpoint_url, use alternative approach (boto3 client configuration or environment variables)
+    - Ensure endpoint_url is None in production (uses default AWS endpoint) and set to real AWS Bedrock endpoint in LocalStack
+    - Update `.env.example` to document AWS_BEDROCK_ENDPOINT_URL configuration for LocalStack environments
+    - _Bug_Condition: isBugCondition(input) where input.environment == "local" AND input.aws_endpoint_url IS NOT NULL AND input.bedrock_endpoint_url IS NULL AND BedrockModel.initialized_without_endpoint_url == TRUE_
+    - _Expected_Behavior: BedrockModel SHALL be initialized with endpoint_url parameter pointing to real AWS Bedrock endpoint in LocalStack, enabling successful AI response generation_
+    - _Preservation: Production environment continues using default AWS Bedrock endpoint; DynamoDB, S3, SQS continue using LocalStack endpoint; error handling for non-Bedrock errors remains unchanged_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 3.4_
+
+  - [x] 3.2 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Bedrock Uses Real AWS Endpoint in LocalStack
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - Verify BedrockModel is initialized WITH endpoint_url parameter in LocalStack
+    - Verify Bedrock API calls succeed and return AI-generated responses
+    - Verify no NotImplementedError is raised
+    - _Requirements: 2.1, 2.2, 2.3, 2.4_
+
+  - [x] 3.3 Verify preservation tests still pass
+    - **Property 2: Preservation** - Production and Other Services Unchanged
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm production environment still uses default AWS Bedrock endpoint
+    - Confirm DynamoDB, S3, SQS still use LocalStack endpoint in local development
+    - Confirm error handling for non-Bedrock errors remains unchanged
+    - Confirm all tests still pass after fix (no regressions)
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Run full test suite (unit, integration, property-based tests)
+  - Verify bug condition test passes (bug is fixed)
+  - Verify preservation tests pass (no regressions)
+  - Test full WhatsApp message flow in LocalStack environment with real Bedrock API calls
+  - Test that DynamoDB, S3, and SQS continue to work with LocalStack while Bedrock uses real AWS
+  - Ensure all tests pass, ask the user if questions arise

@@ -11,18 +11,29 @@
 │   │   ├── session_reminder.py    # EventBridge session reminders
 │   │   ├── payment_reminder.py    # EventBridge payment reminders
 │   │   ├── notification_sender.py # SQS notification processing
-│   │   └── oauth_callback.py      # OAuth callback handler
+│   │   ├── oauth_callback.py      # OAuth callback handler
+│   │   └── session_confirmation.py # EventBridge session confirmation
 │   │
 │   ├── services/                  # Business logic services
 │   │   ├── message_router.py      # Phone number routing logic
-│   │   ├── ai_agent.py            # AWS Strands integration
+│   │   ├── strands_agent_service.py # Strands Agents SDK integration
+│   │   ├── conversation_handlers.py # Onboarding, Trainer, Student handlers
+│   │   ├── conversation_state.py  # Conversation state management
+│   │   ├── menu_system.py         # Menu-based interaction system
+│   │   ├── menu_context.py        # Menu state management
+│   │   ├── menu_definitions.py    # Menu structure definitions
+│   │   ├── menu_generator.py      # Menu text generation
+│   │   ├── menu_processor.py      # Menu input processing
 │   │   ├── calendar_sync.py       # Calendar API integration
 │   │   ├── receipt_storage.py     # S3 media handling
-│   │   └── twilio_client.py       # Twilio API wrapper
+│   │   ├── session_conflict.py    # Session conflict detection
+│   │   ├── twilio_client.py       # Twilio API wrapper
+│   │   ├── feature_flags.py       # Feature flag management
+│   │   └── mock_bedrock.py        # Mock Bedrock for testing
 │   │
 │   ├── tools/                     # AI agent tool functions
-│   │   ├── student_tools.py       # register_student, view_students
-│   │   ├── session_tools.py       # schedule_session, reschedule_session, cancel_session
+│   │   ├── student_tools.py       # register_student, view_students, update_student
+│   │   ├── session_tools.py       # schedule_session, reschedule_session, cancel_session, view_calendar
 │   │   ├── payment_tools.py       # register_payment, view_payments
 │   │   ├── calendar_tools.py      # connect_calendar, view_calendar
 │   │   └── notification_tools.py  # send_notification
@@ -34,9 +45,13 @@
 │   ├── utils/                     # Utility functions
 │   │   ├── validation.py          # Input validation utilities
 │   │   ├── encryption.py          # KMS encryption helpers
-│   │   └── logging.py             # Structured logging setup
+│   │   ├── logging.py             # Structured logging setup
+│   │   ├── retry.py               # Retry logic utilities
+│   │   └── i18n.py                # Internationalization support
 │   │
-│   └── config.py                  # Environment configuration
+│   ├── config.py                  # Environment configuration
+│   ├── main.py                    # Local development entry point
+│   └── local_sqs_poller.py        # Local SQS polling for development
 │
 ├── tests/                         # Test suite
 │   ├── unit/                      # Unit tests
@@ -55,7 +70,18 @@
 │   │   ├── test_payment_properties.py
 │   │   └── ...
 │   │
+│   ├── smoke/                     # Smoke tests for quick validation
+│   │   └── ...
+│   │
 │   └── conftest.py                # Shared pytest fixtures
+│
+├── examples/                      # Usage examples
+│   ├── conversation_state_usage.py
+│   ├── dynamodb_client_usage.py
+│   ├── encryption_usage.py
+│   ├── logging_usage.py
+│   ├── retry_usage.py
+│   └── session_conflict_usage.py
 │
 ├── infrastructure/                # Infrastructure as Code
 │   ├── template.yml               # CloudFormation template
