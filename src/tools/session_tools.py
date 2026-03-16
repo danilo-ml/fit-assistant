@@ -222,6 +222,7 @@ def schedule_session(
             session_datetime=session_datetime,
             duration_minutes=duration_minutes,
             location=location,
+            student_email=matching_student.get("email"),
         )
 
         # If calendar sync succeeded, update session with calendar event info

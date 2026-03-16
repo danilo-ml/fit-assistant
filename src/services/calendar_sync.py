@@ -472,6 +472,7 @@ class CalendarSyncService:
         session_datetime: datetime,
         duration_minutes: int,
         location: Optional[str] = None,
+        student_email: Optional[str] = None,
     ) -> Optional[Dict[str, str]]:
         """
         Create calendar event for a training session.
@@ -548,6 +549,8 @@ class CalendarSyncService:
                 }
                 if location:
                     event_data["location"] = location
+                if student_email:
+                    event_data["attendees"] = [{"email": student_email}]
 
                 event_id = self._google_create_event(access_token, calendar_id, event_data)
 
@@ -569,6 +572,13 @@ class CalendarSyncService:
                 }
                 if location:
                     event_data["location"] = {"displayName": location}
+                if student_email:
+                    event_data["attendees"] = [
+                        {
+                            "emailAddress": {"address": student_email, "name": student_name},
+                            "type": "required",
+                        }
+                    ]
 
                 event_id = self._outlook_create_event(access_token, event_data)
 
@@ -607,6 +617,7 @@ class CalendarSyncService:
         session_datetime: datetime,
         duration_minutes: int,
         location: Optional[str] = None,
+        student_email: Optional[str] = None,
     ) -> bool:
         """
         Update calendar event for a rescheduled training session.
@@ -685,6 +696,8 @@ class CalendarSyncService:
                 }
                 if location:
                     event_data["location"] = location
+                if student_email:
+                    event_data["attendees"] = [{"email": student_email}]
 
                 self._google_update_event(
                     access_token, calendar_id, calendar_event_id, event_data
@@ -708,6 +721,13 @@ class CalendarSyncService:
                 }
                 if location:
                     event_data["location"] = {"displayName": location}
+                if student_email:
+                    event_data["attendees"] = [
+                        {
+                            "emailAddress": {"address": student_email, "name": student_name},
+                            "type": "required",
+                        }
+                    ]
 
                 self._outlook_update_event(access_token, calendar_event_id, event_data)
 
