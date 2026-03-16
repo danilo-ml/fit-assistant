@@ -1158,7 +1158,46 @@ def schedule_recurring_session(
 
             created_sessions.append(session_info)
 
-        # Skip calendar sync for recurring sessions to avoid timeout
+        # Sync each created session with calendar (graceful degradation)
+        calendar_synced_count = 0
+        for session_info in created_sessions:
+            try:
+                calendar_result = calendar_sync_service.create_event(
+                    trainer_id=trainer_id,
+                    session_id=session_info["session_id"],
+                    student_name=session_info["student_name"],
+                    session_datetime=datetime.fromisoformat(session_info["session_datetime"]),
+                    duration_minutes=session_info["duration_minutes"],
+                    location=session_info.get("location"),
+                    student_email=matching_student.get("email"),
+                )
+
+                if calendar_result:
+                    # Update session with calendar event info
+                    session_data = dynamodb_client.get_session(trainer_id, session_info["session_id"])
+                    if session_data:
+                        session_data["calendar_event_id"] = calendar_result["calendar_event_id"]
+                        session_data["calendar_provider"] = calendar_result["calendar_provider"]
+                        session_data["updated_at"] = datetime.utcnow().isoformat()
+                        dynamodb_client.put_session(session_data)
+
+                    session_info["calendar_event_id"] = calendar_result["calendar_event_id"]
+                    session_info["calendar_provider"] = calendar_result["calendar_provider"]
+                    calendar_synced_count += 1
+            except Exception as e:
+                logger.warning(
+                    "Calendar sync failed for recurring session, continuing",
+                    session_id=session_info["session_id"],
+                    error=str(e),
+                )
+
+        if calendar_synced_count > 0:
+            logger.info(
+                "Calendar sync completed for recurring sessions",
+                trainer_id=trainer_id,
+                synced=calendar_synced_count,
+                total=len(created_sessions),
+            )
 
         # Prepare response
         if not created_sessions:
