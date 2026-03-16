@@ -49,7 +49,7 @@ jobs:
           find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
           find . -type f -name "*.pyc" -delete
           find . -type f -name "*.pyo" -delete
-          find . -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+          find . -type d -name "*.dist-info" ! -name "opentelemetry*" -exec rm -rf {} + 2>/dev/null || true
           find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 
       - name: Create deployment package
