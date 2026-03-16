@@ -362,7 +362,8 @@ IMPORTANTE - Interpretação de Datas e Horários:
         agent = Agent(
             model=self.model,
             system_prompt=system_prompt_with_context,
-            tools=tools
+            tools=tools,
+            temperature=0.5 # Lower temperature for more deterministic responses
         )
         
         logger.info(
