@@ -169,6 +169,7 @@ Exemplos de interações:
 - "Agendar sessão semanalmente toda terça-feira com Juliana Nano às 18:00, 60 minutos" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira", time="18:00", duration_minutes=60
 - "Agendar sessão toda terça e quinta com Juliana Nano das 17:00 às 18:00 recorrente" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira, quinta-feira", time="17:00", duration_minutes=60
 - "Cancelar sessão xyz789" → use cancel_session
+- "Cancelar todas as sessões com Juliana Nano" → use cancel_student_sessions com student_name="Juliana Nano"
 - "Ver meus alunos" → use view_students
 - "Registrar pagamento de R$100 do Pedro" → use register_payment
 
@@ -313,6 +314,11 @@ IMPORTANTE - Interpretação de Datas e Horários:
             return session_tools.cancel_session(trainer_id, session_id, reason)
         
         @tool
+        def cancel_student_sessions(student_name: str, reason: str = None) -> Dict[str, Any]:
+            """Cancel all scheduled sessions with a specific student."""
+            return session_tools.cancel_student_sessions(trainer_id, student_name, reason)
+        
+        @tool
         def view_calendar(start_date: str = None, end_date: str = None, filter: str = None) -> Dict[str, Any]:
             """View training sessions in the calendar."""
             return session_tools.view_calendar(trainer_id, start_date, end_date, filter)
@@ -358,6 +364,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
             schedule_recurring_session,
             reschedule_session,
             cancel_session,
+            cancel_student_sessions,
             view_calendar,
             register_payment,
             confirm_payment,

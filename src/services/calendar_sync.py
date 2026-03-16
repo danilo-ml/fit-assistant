@@ -607,6 +607,145 @@ class CalendarSyncService:
             )
             return None
 
+    def create_recurring_event(
+        self,
+        trainer_id: str,
+        student_name: str,
+        session_datetime: datetime,
+        duration_minutes: int,
+        weekday_codes: list,
+        count: int,
+        location: Optional[str] = None,
+        student_email: Optional[str] = None,
+    ) -> Optional[Dict[str, str]]:
+        """
+        Create a recurring calendar event using RRULE.
+
+        Creates a single recurring event in Google Calendar or Outlook
+        instead of multiple individual events.
+
+        Args:
+            trainer_id: Trainer identifier
+            student_name: Student name for event title
+            session_datetime: First session start datetime
+            duration_minutes: Session duration in minutes
+            weekday_codes: List of RRULE day codes (e.g., ["TU", "TH"])
+            count: Total number of occurrences
+            location: Optional session location
+            student_email: Optional student email for invite
+
+        Returns:
+            dict with calendar_event_id and calendar_provider, or None
+        """
+        try:
+            config = self._get_calendar_config(trainer_id)
+            if not config:
+                logger.info(
+                    "No calendar connected, skipping recurring sync",
+                    trainer_id=trainer_id,
+                )
+                return None
+
+            provider = config["provider"]
+            calendar_id = config.get("calendar_id", "primary")
+            access_token = self._get_access_token(trainer_id, config)
+            end_datetime = session_datetime + timedelta(minutes=duration_minutes)
+
+            # Build RRULE string
+            byday = ",".join(weekday_codes)
+            rrule = f"RRULE:FREQ=WEEKLY;BYDAY={byday};COUNT={count}"
+
+            if provider == "google":
+                event_data = {
+                    "summary": f"Treino com {student_name}",
+                    "description": f"Sessão recorrente - {student_name}",
+                    "start": {
+                        "dateTime": session_datetime.isoformat(),
+                        "timeZone": "UTC",
+                    },
+                    "end": {
+                        "dateTime": end_datetime.isoformat(),
+                        "timeZone": "UTC",
+                    },
+                    "recurrence": [rrule],
+                }
+                if location:
+                    event_data["location"] = location
+                if student_email:
+                    event_data["attendees"] = [{"email": student_email}]
+
+                event_id = self._google_create_event(access_token, calendar_id, event_data)
+
+            elif provider == "outlook":
+                # Outlook uses a different recurrence format
+                # Map RRULE day codes to Outlook day names
+                outlook_days = {
+                    "MO": "monday", "TU": "tuesday", "WE": "wednesday",
+                    "TH": "thursday", "FR": "friday", "SA": "saturday", "SU": "sunday",
+                }
+                days_of_week = [outlook_days[code] for code in weekday_codes if code in outlook_days]
+
+                event_data = {
+                    "subject": f"Treino com {student_name}",
+                    "body": {
+                        "contentType": "Text",
+                        "content": f"Sessão recorrente - {student_name}",
+                    },
+                    "start": {
+                        "dateTime": session_datetime.isoformat(),
+                        "timeZone": "UTC",
+                    },
+                    "end": {
+                        "dateTime": end_datetime.isoformat(),
+                        "timeZone": "UTC",
+                    },
+                    "recurrence": {
+                        "pattern": {
+                            "type": "weekly",
+                            "interval": 1,
+                            "daysOfWeek": days_of_week,
+                        },
+                        "range": {
+                            "type": "numbered",
+                            "startDate": session_datetime.strftime("%Y-%m-%d"),
+                            "numberOfOccurrences": count,
+                        },
+                    },
+                }
+                if location:
+                    event_data["location"] = {"displayName": location}
+                if student_email:
+                    event_data["attendees"] = [
+                        {
+                            "emailAddress": {"address": student_email, "name": student_name},
+                            "type": "required",
+                        }
+                    ]
+
+                event_id = self._outlook_create_event(access_token, event_data)
+
+            else:
+                return None
+
+            logger.info(
+                "Recurring calendar event created",
+                trainer_id=trainer_id,
+                calendar_event_id=event_id,
+                provider=provider,
+                weekdays=weekday_codes,
+                count=count,
+            )
+
+            return {"calendar_event_id": event_id, "calendar_provider": provider}
+
+        except Exception as e:
+            logger.error(
+                "Recurring calendar sync failed",
+                trainer_id=trainer_id,
+                error=str(e),
+            )
+            return None
+
     def update_event(
         self,
         trainer_id: str,

@@ -1158,46 +1158,48 @@ def schedule_recurring_session(
 
             created_sessions.append(session_info)
 
-        # Sync each created session with calendar (graceful degradation)
-        calendar_synced_count = 0
-        for session_info in created_sessions:
-            try:
-                calendar_result = calendar_sync_service.create_event(
-                    trainer_id=trainer_id,
-                    session_id=session_info["session_id"],
-                    student_name=session_info["student_name"],
-                    session_datetime=datetime.fromisoformat(session_info["session_datetime"]),
-                    duration_minutes=session_info["duration_minutes"],
-                    location=session_info.get("location"),
-                    student_email=matching_student.get("email"),
-                )
+        # Sync with calendar as a single recurring event
+        if created_sessions:
+            # Map weekday numbers to RRULE day codes
+            rrule_day_map = {0: "MO", 1: "TU", 2: "WE", 3: "TH", 4: "FR", 5: "SA", 6: "SU"}
+            weekday_codes = [rrule_day_map[wd] for wd in sorted(target_weekdays)]
 
-                if calendar_result:
-                    # Update session with calendar event info
-                    session_data = dynamodb_client.get_session(trainer_id, session_info["session_id"])
-                    if session_data:
-                        session_data["calendar_event_id"] = calendar_result["calendar_event_id"]
-                        session_data["calendar_provider"] = calendar_result["calendar_provider"]
-                        session_data["updated_at"] = datetime.utcnow().isoformat()
-                        dynamodb_client.put_session(session_data)
-
-                    session_info["calendar_event_id"] = calendar_result["calendar_event_id"]
-                    session_info["calendar_provider"] = calendar_result["calendar_provider"]
-                    calendar_synced_count += 1
-            except Exception as e:
-                logger.warning(
-                    "Calendar sync failed for recurring session, continuing",
-                    session_id=session_info["session_id"],
-                    error=str(e),
-                )
-
-        if calendar_synced_count > 0:
-            logger.info(
-                "Calendar sync completed for recurring sessions",
+            calendar_result = calendar_sync_service.create_recurring_event(
                 trainer_id=trainer_id,
-                synced=calendar_synced_count,
-                total=len(created_sessions),
+                student_name=matching_student["name"],
+                session_datetime=datetime.fromisoformat(created_sessions[0]["session_datetime"]),
+                duration_minutes=duration_minutes,
+                weekday_codes=weekday_codes,
+                count=len(created_sessions),
+                location=location,
+                student_email=matching_student.get("email"),
             )
+
+            if calendar_result:
+                # Store the recurring event ID on all sessions
+                for session_info in created_sessions:
+                    try:
+                        session_data = dynamodb_client.get_session(trainer_id, session_info["session_id"])
+                        if session_data:
+                            session_data["calendar_event_id"] = calendar_result["calendar_event_id"]
+                            session_data["calendar_provider"] = calendar_result["calendar_provider"]
+                            session_data["updated_at"] = datetime.utcnow().isoformat()
+                            dynamodb_client.put_session(session_data)
+                        session_info["calendar_event_id"] = calendar_result["calendar_event_id"]
+                        session_info["calendar_provider"] = calendar_result["calendar_provider"]
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to update session with calendar info",
+                            session_id=session_info["session_id"],
+                            error=str(e),
+                        )
+
+                logger.info(
+                    "Recurring calendar event created for all sessions",
+                    trainer_id=trainer_id,
+                    calendar_event_id=calendar_result["calendar_event_id"],
+                    sessions_count=len(created_sessions),
+                )
 
         # Prepare response
         if not created_sessions:
@@ -1240,3 +1242,162 @@ def schedule_recurring_session(
             exc_info=True
         )
         return {"success": False, "error": f"Failed to schedule recurring sessions: {str(e)}"}
+
+
+@tool
+def cancel_student_sessions(
+    trainer_id: str,
+    student_name: str,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Cancel all scheduled sessions with a specific student.
+
+    Use this tool when the trainer wants to cancel all upcoming sessions
+    with a student at once (e.g., student is leaving, schedule change).
+    Cancels all sessions with status 'scheduled' and syncs with calendar.
+
+    Args:
+        trainer_id: Trainer identifier (injected automatically)
+        student_name: Student's name (e.g., "Juliana Nano")
+        reason: Optional cancellation reason
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'cancelled_count': int,
+                'sessions': [...],
+                'calendar_synced': bool
+            },
+            'error': str (optional)
+        }
+
+    Examples:
+        When trainer says: "Cancelar todas as sessões com Juliana Nano"
+        When trainer says: "Cancelar sessões da Maria"
+    """
+    try:
+        # Sanitize inputs
+        student_name = InputSanitizer.sanitize_string(student_name)
+        if reason:
+            reason = InputSanitizer.sanitize_string(reason)
+
+        if not student_name:
+            return {"success": False, "error": "Student name is required"}
+
+        # Verify trainer exists
+        trainer = dynamodb_client.get_trainer(trainer_id)
+        if not trainer:
+            return {"success": False, "error": f"Trainer not found: {trainer_id}"}
+
+        # Find student by name
+        trainer_students = dynamodb_client.get_trainer_students(trainer_id)
+        matching_student = None
+        for link in trainer_students:
+            if link.get("status") != "active":
+                continue
+            student_id = link.get("student_id")
+            if not student_id:
+                continue
+            student_data = dynamodb_client.get_student(student_id)
+            if student_data and student_data["name"].lower() == student_name.lower():
+                matching_student = student_data
+                break
+
+        if not matching_student:
+            return {
+                "success": False,
+                "error": f"Student '{student_name}' not found or not linked to this trainer.",
+            }
+
+        student_id = matching_student["student_id"]
+
+        # Get all scheduled sessions for this student
+        now = datetime.utcnow()
+        sessions = dynamodb_client.get_sessions_by_date_range(
+            trainer_id=trainer_id,
+            start_datetime=now,
+            end_datetime=now + timedelta(days=365),
+            status_filter=["scheduled"],
+        )
+
+        # Filter to only this student's sessions
+        student_sessions = [s for s in sessions if s.get("student_id") == student_id]
+
+        if not student_sessions:
+            return {
+                "success": False,
+                "error": f"No scheduled sessions found with {student_name}.",
+            }
+
+        # Cancel each session
+        cancelled = []
+        calendar_event_ids = set()
+
+        for session in student_sessions:
+            session_id = session["session_id"]
+            session["status"] = "cancelled"
+            session["cancelled_at"] = now.isoformat()
+            session["updated_at"] = now.isoformat()
+            if reason:
+                session["cancellation_reason"] = reason
+
+            dynamodb_client.put_session(session)
+
+            cancelled.append({
+                "session_id": session_id,
+                "session_datetime": session["session_datetime"],
+                "duration_minutes": session["duration_minutes"],
+            })
+
+            # Collect unique calendar event IDs
+            if session.get("calendar_event_id"):
+                calendar_event_ids.add(
+                    (session["calendar_event_id"], session.get("calendar_provider"))
+                )
+
+        # Delete calendar events (recurring event = 1 deletion for all)
+        calendar_synced = False
+        for event_id, provider in calendar_event_ids:
+            try:
+                result = calendar_sync_service.delete_event(
+                    trainer_id=trainer_id,
+                    session_id=cancelled[0]["session_id"],  # Any session ID for logging
+                    calendar_event_id=event_id,
+                    calendar_provider=provider,
+                )
+                if result:
+                    calendar_synced = True
+            except Exception as e:
+                logger.warning(
+                    "Failed to delete calendar event",
+                    event_id=event_id,
+                    error=str(e),
+                )
+
+        logger.info(
+            "Cancelled all sessions with student",
+            trainer_id=trainer_id,
+            student_name=student_name,
+            cancelled_count=len(cancelled),
+            calendar_synced=calendar_synced,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "cancelled_count": len(cancelled),
+                "sessions": cancelled,
+                "calendar_synced": calendar_synced,
+            },
+        }
+
+    except Exception as e:
+        logger.error(
+            "Failed to cancel student sessions",
+            trainer_id=trainer_id,
+            student_name=student_name,
+            error=str(e),
+        )
+        return {"success": False, "error": f"Failed to cancel sessions: {str(e)}"}
