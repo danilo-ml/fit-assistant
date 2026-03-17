@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     twilio_secret_name: Optional[str] = None
     google_oauth_secret_name: Optional[str] = None
     outlook_oauth_secret_name: Optional[str] = None
+    dashboard_token_secret_name: Optional[str] = None
     
     # Twilio Configuration (fallback for local/dev)
     twilio_account_sid: str = ""
@@ -198,6 +199,26 @@ class Settings(BaseSettings):
             'client_id': self.outlook_client_id or '',
             'client_secret': self.outlook_client_secret or ''
         }
+
+    def get_dashboard_token(self) -> str:
+        """
+        Get the dashboard admin token from Secrets Manager.
+
+        Reads the secret identified by ``dashboard_token_secret_name``.  The
+        secret value may be a plain string (used as-is) or a JSON object with
+        a ``token`` key.
+
+        Returns:
+            The dashboard token string, or an empty string if the secret
+            name is not configured or retrieval fails.
+        """
+        if not self.dashboard_token_secret_name:
+            return ""
+
+        secret = self._get_secret(self.dashboard_token_secret_name)
+        if isinstance(secret, dict):
+            return secret.get("token", "")
+        return ""
 
 
 def get_settings() -> Settings:

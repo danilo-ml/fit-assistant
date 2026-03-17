@@ -82,6 +82,21 @@ Resources:
         - Key: Application
           Value: FitAgent
 
+  DashboardTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'fitagent/dashboard-token/${Environment}'
+      Description: Pre-shared token for admin dashboard API authentication
+      SecretString: !Sub |
+        {
+          "token": "PLACEHOLDER_UPDATE_AFTER_DEPLOYMENT"
+        }
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
   # KMS Key for OAuth token encryption
   OAuthEncryptionKey:
     Type: AWS::KMS::Key
@@ -685,6 +700,72 @@ Resources:
         - Key: Application
           Value: FitAgent
 
+  # IAM Role for Dashboard Lambda
+  DashboardLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'fitagent-dashboard-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                Resource:
+                  - !GetAtt FitAgentTable.Arn
+                  - !Sub '${FitAgentTable.Arn}/index/*'
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Ref DashboardTokenSecret
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # Dashboard Lambda Function
+  DashboardFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'fitagent-dashboard-${Environment}'
+      Runtime: python3.12
+      Handler: handlers.dashboard_handler.lambda_handler
+      Role: !GetAtt DashboardLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 512
+      Code:
+        S3Bucket: fitagent-lambda-deployments-429649512384
+        S3Key: production/lambda-latest.zip
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref FitAgentTable
+          DASHBOARD_TOKEN_SECRET_NAME: !Ref DashboardTokenSecret
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
   # SQS FIFO Queue for message processing with ordering guarantees
   MessageQueue:
     Type: AWS::SQS::Queue
@@ -929,11 +1010,63 @@ Resources:
       MethodResponses:
         - StatusCode: 200
 
+  # Dashboard API Gateway Resources
+  DashboardResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ParentId: !GetAtt WebhookApi.RootResourceId
+      PathPart: dashboard
+
+  DashboardAuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ParentId: !Ref DashboardResource
+      PathPart: auth
+
+  DashboardAuthMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ResourceId: !Ref DashboardAuthResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DashboardFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
+  DashboardMetricsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ParentId: !Ref DashboardResource
+      PathPart: metrics
+
+  DashboardMetricsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ResourceId: !Ref DashboardMetricsResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DashboardFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+
   WebhookDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - WebhookMethod
       - OAuthCallbackMethod
+      - DashboardAuthMethod
+      - DashboardMetricsMethod
     Properties:
       RestApiId: !Ref WebhookApi
       StageName: !Ref Environment
@@ -950,6 +1083,14 @@ Resources:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref OAuthCallbackFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApi}/*/*/*'
+
+  DashboardLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DashboardFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApi}/*/*/*'
@@ -1230,3 +1371,33 @@ Outputs:
     Value: !Ref ApiCertificate
     Export:
       Name: !Sub '${AWS::StackName}-ApiCertificateArn'
+
+  DashboardTokenSecretArn:
+    Description: Dashboard token secret ARN
+    Value: !Ref DashboardTokenSecret
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardTokenSecret'
+
+  DashboardFunctionArn:
+    Description: Dashboard Lambda function ARN
+    Value: !GetAtt DashboardFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardFunctionArn'
+
+  DashboardFunctionName:
+    Description: Dashboard Lambda function name
+    Value: !Ref DashboardFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardFunctionName'
+
+  DashboardAuthUrl:
+    Description: Dashboard auth endpoint URL
+    Value: !Sub 'https://api.${DomainName}/dashboard/auth'
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardAuthUrl'
+
+  DashboardMetricsUrl:
+    Description: Dashboard metrics endpoint URL
+    Value: !Sub 'https://api.${DomainName}/dashboard/metrics'
+    Export:
+      Name: !Sub '${AWS::StackName}-DashboardMetricsUrl'

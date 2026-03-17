@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitAgent - Painel Administrativo</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f4f6f9;
+        }
+
+        /* ---------- Login ---------- */
+        #login-view {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .login-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,.08);
+            padding: 2.5rem 2rem;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .login-card h1 { font-size: 1.6rem; color: #1a1a2e; margin-bottom: .25rem; }
+        .login-card p { color: #666; font-size: .9rem; margin-bottom: 1.5rem; }
+        .login-card input[type="password"] {
+            width: 100%;
+            padding: .75rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .login-card input:focus { border-color: #4361ee; }
+        .login-error { color: #e63946; font-size: .85rem; margin-bottom: .75rem; display: none; }
+
+        /* ---------- Buttons ---------- */
+        .btn {
+            display: inline-block;
+            padding: .6rem 1.2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: .9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .2s, opacity .2s;
+        }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-primary { background: #4361ee; color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: #3a56d4; }
+        .btn-full { width: 100%; }
+        .btn-sm { padding: .4rem .8rem; font-size: .8rem; }
+        .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,.4); color: #fff; }
+        .btn-outline:hover { background: rgba(255,255,255,.1); }
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+        /* ---------- Header ---------- */
+        #dash-header {
+            background: #1a1a2e;
+            color: #fff;
+            padding: .75rem 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: .5rem;
+        }
+        .logo { font-size: 1.25rem; font-weight: 700; }
+        .logo small { font-weight: 400; opacity: .7; font-size: .75rem; }
+        .header-actions { display: flex; align-items: center; gap: .5rem; }
+        .refresh-time { font-size: .75rem; opacity: .6; }
+
+        /* ---------- Banners ---------- */
+        .banner { padding: .6rem 1.5rem; text-align: center; font-size: .85rem; display: flex; align-items: center; justify-content: center; gap: .75rem; }
+        .banner-error { background: #fce4e4; color: #c0392b; }
+        .banner-warn { background: #fff3cd; color: #856404; }
+
+        /* ---------- Container / Toolbar ---------- */
+        .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+        .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-bottom: 1.5rem; }
+        .period-selector { display: flex; gap: .25rem; }
+        .period-btn {
+            padding: .4rem .9rem;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            font-size: .8rem;
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .period-btn.active, .period-btn:hover { background: #4361ee; color: #fff; border-color: #4361ee; }
+        .custom-range { display: flex; align-items: center; gap: .5rem; font-size: .85rem; }
+        .custom-range input[type="date"] { padding: .35rem .5rem; border: 1px solid #ddd; border-radius: 6px; font-size: .8rem; }
+
+        /* ---------- Sections ---------- */
+        .section { margin-bottom: 2rem; }
+        .section-title { font-size: 1.1rem; color: #1a1a2e; margin-bottom: .75rem; }
+
+        /* ---------- KPI Grid ---------- */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .75rem; }
+        .kpi-grid-2 { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: .75rem; }
+        .kpi-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 1.1rem 1rem;
+            box-shadow: 0 1px 6px rgba(0,0,0,.05);
+            text-align: center;
+        }
+        .kpi-value { font-size: 1.6rem; font-weight: 700; color: #1a1a2e; }
+        .kpi-label { font-size: .78rem; color: #888; margin-top: .2rem; }
+
+        /* ---------- Charts ---------- */
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .75rem; }
+        .chart-card { background: #fff; border-radius: 10px; padding: 1rem; box-shadow: 0 1px 6px rgba(0,0,0,.05); }
+
+        /* ---------- Responsive ---------- */
+        @media (max-width: 600px) {
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-grid { grid-template-columns: 1fr; }
+            .header-inner { flex-direction: column; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ==================== LOGIN VIEW ==================== -->
+<div id="login-view">
+    <div class="login-card">
+        <h1>🏋️ FitAgent</h1>
+        <p>Painel Administrativo</p>
+        <div id="login-error" class="login-error" role="alert"></div>
+        <label for="token-input" class="sr-only">Token de acesso</label>
+        <input id="token-input" type="password" placeholder="Token de acesso" aria-label="Token de acesso" />
+        <button class="btn btn-primary btn-full" id="login-btn">Entrar</button>
+    </div>
+</div>
+
+<!-- ==================== DASHBOARD VIEW ==================== -->
+<div id="dashboard-view" style="display:none;">
+    <header id="dash-header">
+        <div class="header-inner">
+            <span class="logo">🏋️ FitAgent <small>Admin</small></span>
+            <div class="header-actions">
+                <span id="last-refresh" class="refresh-time"></span>
+                <button class="btn btn-sm" id="refresh-btn" aria-label="Atualizar dados">↻ Atualizar</button>
+                <button class="btn btn-sm btn-outline" id="logout-btn">Sair</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Error / warning banners -->
+    <div id="error-banner" class="banner banner-error" style="display:none;" role="alert">
+        <span id="error-msg"></span>
+        <button class="btn btn-sm" id="retry-btn">Tentar novamente</button>
+    </div>
+    <div id="partial-banner" class="banner banner-warn" style="display:none;" role="status">
+        <span id="partial-msg"></span>
+    </div>
+
+    <main class="container">
+        <!-- Period selector -->
+        <div class="toolbar">
+            <div class="period-selector" role="group" aria-label="Período">
+                <button class="period-btn" data-period="today">Hoje</button>
+                <button class="period-btn" data-period="7">7 dias</button>
+                <button class="period-btn active" data-period="30">30 dias</button>
+                <button class="period-btn" data-period="custom">Personalizado</button>
+            </div>
+            <div id="custom-range" class="custom-range" style="display:none;">
+                <label for="start-date" class="sr-only">Data inicial</label>
+                <input type="date" id="start-date" aria-label="Data inicial" />
+                <span>até</span>
+                <label for="end-date" class="sr-only">Data final</label>
+                <input type="date" id="end-date" aria-label="Data final" />
+                <button class="btn btn-sm btn-primary" id="apply-range">Aplicar</button>
+            </div>
+        </div>
+
+        <!-- KPI Sections -->
+        <section class="section" aria-label="Métricas de Usuários">
+            <h2 class="section-title">👥 Usuários</h2>
+            <div class="kpi-grid" id="user-metrics">
+                <div class="kpi-card"><div class="kpi-value" id="total_trainers">—</div><div class="kpi-label">Treinadores</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="total_students">—</div><div class="kpi-label">Alunos</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="active_trainers">—</div><div class="kpi-label">Treinadores Ativos</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="active_students">—</div><div class="kpi-label">Alunos Ativos</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="avg_students_per_trainer">—</div><div class="kpi-label">Média Alunos/Treinador</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="total_active_links">—</div><div class="kpi-label">Vínculos Ativos</div></div>
+            </div>
+        </section>
+
+        <section class="section" aria-label="Métricas de Sessões">
+            <h2 class="section-title">📅 Sessões</h2>
+            <div class="kpi-grid" id="session-metrics">
+                <div class="kpi-card"><div class="kpi-value" id="total_sessions">—</div><div class="kpi-label">Total</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="scheduled_sessions">—</div><div class="kpi-label">Agendadas</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="completed_sessions">—</div><div class="kpi-label">Concluídas</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="cancelled_sessions">—</div><div class="kpi-label">Canceladas</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="missed_sessions">—</div><div class="kpi-label">Perdidas</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="completion_rate">—</div><div class="kpi-label">Taxa de Conclusão</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="cancellation_rate">—</div><div class="kpi-label">Taxa de Cancelamento</div></div>
+            </div>
+        </section>
+
+        <section class="section" aria-label="Métricas de Pagamentos">
+            <h2 class="section-title">💰 Pagamentos</h2>
+            <div class="kpi-grid" id="payment-metrics">
+                <div class="kpi-card"><div class="kpi-value" id="total_payments">—</div><div class="kpi-label">Total</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="pending_payments">—</div><div class="kpi-label">Pendentes</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="confirmed_payments">—</div><div class="kpi-label">Confirmados</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="total_confirmed_amount">—</div><div class="kpi-label">Valor Confirmado</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="total_pending_amount">—</div><div class="kpi-label">Valor Pendente</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="confirmation_rate">—</div><div class="kpi-label">Taxa de Confirmação</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="avg_payment_amount">—</div><div class="kpi-label">Valor Médio</div></div>
+            </div>
+        </section>
+
+        <section class="section" aria-label="Métricas de Crescimento">
+            <h2 class="section-title">📈 Crescimento</h2>
+            <div class="kpi-grid kpi-grid-2" id="growth-summary">
+                <div class="kpi-card"><div class="kpi-value" id="new_trainers">—</div><div class="kpi-label">Novos Treinadores</div></div>
+                <div class="kpi-card"><div class="kpi-value" id="new_students">—</div><div class="kpi-label">Novos Alunos</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card"><canvas id="chart-trainers" aria-label="Gráfico de novos treinadores por dia" role="img"></canvas></div>
+                <div class="chart-card"><canvas id="chart-students" aria-label="Gráfico de novos alunos por dia" role="img"></canvas></div>
+                <div class="chart-card"><canvas id="chart-sessions" aria-label="Gráfico de sessões por dia" role="img"></canvas></div>
+                <div class="chart-card"><canvas id="chart-revenue" aria-label="Gráfico de receita por dia" role="img"></canvas></div>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+(function () {
+    "use strict";
+
+    // ---- Configuration ----
+    var API_BASE = ""; // relative — same origin; override if needed
+    var TOKEN_KEY = "fitagent_dashboard_token";
+    var TOKEN_TS_KEY = "fitagent_dashboard_token_ts";
+    var SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+    // ---- DOM refs ----
+    var loginView     = document.getElementById("login-view");
+    var dashView      = document.getElementById("dashboard-view");
+    var tokenInput    = document.getElementById("token-input");
+    var loginBtn      = document.getElementById("login-btn");
+    var loginError    = document.getElementById("login-error");
+    var logoutBtn     = document.getElementById("logout-btn");
+    var refreshBtn    = document.getElementById("refresh-btn");
+    var retryBtn      = document.getElementById("retry-btn");
+    var lastRefreshEl = document.getElementById("last-refresh");
+    var errorBanner   = document.getElementById("error-banner");
+    var errorMsg      = document.getElementById("error-msg");
+    var partialBanner = document.getElementById("partial-banner");
+    var partialMsg    = document.getElementById("partial-msg");
+    var applyRangeBtn = document.getElementById("apply-range");
+    var startDateIn   = document.getElementById("start-date");
+    var endDateIn     = document.getElementById("end-date");
+    var customRange   = document.getElementById("custom-range");
+
+    var charts = {};
+    var currentPeriod = "30";
+
+    // ---- Helpers ----
+    function fmtDate(d) { return d.toISOString().slice(0, 10); }
+    function fmtPct(v) { return (v * 100).toFixed(1) + "%"; }
+    function fmtCurrency(v) { return "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+    function getDateRange() {
+        var today = new Date();
+        var end = fmtDate(today);
+        var start;
+        if (currentPeriod === "today") {
+            start = end;
+        } else if (currentPeriod === "custom") {
+            start = startDateIn.value;
+            end = endDateIn.value;
+        } else {
+            var d = new Date(today);
+            d.setDate(d.getDate() - parseInt(currentPeriod, 10));
+            start = fmtDate(d);
+        }
+        return { start_date: start, end_date: end };
+    }
+
+    // ---- Token management ----
+    function getToken() {
+        var ts = localStorage.getItem(TOKEN_TS_KEY);
+        if (ts && Date.now() - parseInt(ts, 10) > SESSION_TTL_MS) {
+            clearToken();
+            return null;
+        }
+        return localStorage.getItem(TOKEN_KEY);
+    }
+    function setToken(t) {
+        localStorage.setItem(TOKEN_KEY, t);
+        localStorage.setItem(TOKEN_TS_KEY, String(Date.now()));
+    }
+    function clearToken() {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_TS_KEY);
+    }
+
+    // ---- View toggling ----
+    function showLogin() {
+        loginView.style.display = "flex";
+        dashView.style.display = "none";
+        tokenInput.value = "";
+        loginError.style.display = "none";
+    }
+    function showDashboard() {
+        loginView.style.display = "none";
+        dashView.style.display = "block";
+        fetchMetrics();
+    }
+
+    // ---- API calls ----
+    function apiFetch(path, token) {
+        return fetch(API_BASE + path, {
+            headers: { "Authorization": "Bearer " + token }
+        }).then(function (res) {
+            if (res.status === 401) {
+                clearToken();
+                showLogin();
+                throw new Error("unauthorized");
+            }
+            return res.json().then(function (body) {
+                return { status: res.status, body: body };
+            });
+        });
+    }
+
+    // ---- Login ----
+    function doLogin() {
+        var token = tokenInput.value.trim();
+        if (!token) return;
+        loginBtn.disabled = true;
+        loginError.style.display = "none";
+
+        apiFetch("/dashboard/auth", token)
+            .then(function (res) {
+                if (res.status === 200 && res.body.valid) {
+                    setToken(token);
+                    showDashboard();
+                } else {
+                    showLoginError("Token inválido.");
+                }
+            })
+            .catch(function (err) {
+                if (err.message !== "unauthorized") {
+                    showLoginError("Erro de conexão. Tente novamente.");
+                }
+            })
+            .finally(function () { loginBtn.disabled = false; });
+    }
+
+    function showLoginError(msg) {
+        loginError.textContent = msg;
+        loginError.style.display = "block";
+    }
+
+    // ---- Metrics fetch ----
+    function fetchMetrics() {
+        var token = getToken();
+        if (!token) { showLogin(); return; }
+
+        var range = getDateRange();
+        var url = "/dashboard/metrics?start_date=" + range.start_date + "&end_date=" + range.end_date;
+
+        errorBanner.style.display = "none";
+        partialBanner.style.display = "none";
+        refreshBtn.disabled = true;
+
+        apiFetch(url, token)
+            .then(function (res) {
+                if (res.status >= 400) {
+                    showError(res.body.message || "Erro ao carregar métricas.");
+                    return;
+                }
+                renderMetrics(res.body);
+            })
+            .catch(function (err) {
+                if (err.message !== "unauthorized") {
+                    showError("Não foi possível conectar ao servidor. Verifique sua conexão.");
+                }
+            })
+            .finally(function () { refreshBtn.disabled = false; });
+    }
+
+    function showError(msg) {
+        errorMsg.textContent = msg;
+        errorBanner.style.display = "flex";
+    }
+
+    // ---- Render ----
+    function setText(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = val;
+    }
+
+    function renderMetrics(data) {
+        // Timestamp
+        if (data.generated_at) {
+            var d = new Date(data.generated_at);
+            lastRefreshEl.textContent = "Atualizado: " + d.toLocaleString("pt-BR");
+        }
+
+        // Partial warning
+        if (data.status === "partial" && data.errors && data.errors.length) {
+            partialMsg.textContent = "Seções indisponíveis: " + data.errors.join(", ");
+            partialBanner.style.display = "flex";
+        }
+
+        // User metrics
+        if (data.user_metrics) {
+            var u = data.user_metrics;
+            setText("total_trainers", u.total_trainers);
+            setText("total_students", u.total_students);
+            setText("active_trainers", u.active_trainers);
+            setText("active_students", u.active_students);
+            setText("avg_students_per_trainer", u.avg_students_per_trainer.toFixed(1));
+            setText("total_active_links", u.total_active_links);
+        }
+
+        // Session metrics
+        if (data.session_metrics) {
+            var s = data.session_metrics;
+            setText("total_sessions", s.total_sessions);
+            setText("scheduled_sessions", s.scheduled_sessions);
+            setText("completed_sessions", s.completed_sessions);
+            setText("cancelled_sessions", s.cancelled_sessions);
+            setText("missed_sessions", s.missed_sessions);
+            setText("completion_rate", fmtPct(s.completion_rate));
+            setText("cancellation_rate", fmtPct(s.cancellation_rate));
+        }
+
+        // Payment metrics
+        if (data.payment_metrics) {
+            var p = data.payment_metrics;
+            setText("total_payments", p.total_payments);
+            setText("pending_payments", p.pending_payments);
+            setText("confirmed_payments", p.confirmed_payments);
+            setText("total_confirmed_amount", fmtCurrency(p.total_confirmed_amount));
+            setText("total_pending_amount", fmtCurrency(p.total_pending_amount));
+            setText("confirmation_rate", fmtPct(p.confirmation_rate));
+            setText("avg_payment_amount", fmtCurrency(p.avg_payment_amount));
+        }
+
+        // Growth metrics
+        if (data.growth_metrics) {
+            var g = data.growth_metrics;
+            setText("new_trainers", g.new_trainers);
+            setText("new_students", g.new_students);
+            renderChart("chart-trainers", "Novos Treinadores", g.trainers_per_day, "#4361ee");
+            renderChart("chart-students", "Novos Alunos", g.students_per_day, "#2ec4b6");
+            renderChart("chart-sessions", "Sessões", g.sessions_per_day, "#ff6b6b");
+            renderChart("chart-revenue", "Receita (R$)", g.revenue_per_day, "#f4a261");
+        }
+    }
+
+    function renderChart(canvasId, label, dataPoints, color) {
+        if (charts[canvasId]) charts[canvasId].destroy();
+        var labels = dataPoints.map(function (dp) { return dp.date; });
+        var values = dataPoints.map(function (dp) { return dp.count; });
+        var ctx = document.getElementById(canvasId).getContext("2d");
+        charts[canvasId] = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: values,
+                    borderColor: color,
+                    backgroundColor: color + "22",
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false }, title: { display: true, text: label } },
+                scales: {
+                    x: { ticks: { maxTicksAuto: true, maxRotation: 45 } },
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+    }
+
+    // ---- Period selector ----
+    document.querySelectorAll(".period-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            document.querySelectorAll(".period-btn").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            currentPeriod = btn.dataset.period;
+            customRange.style.display = currentPeriod === "custom" ? "flex" : "none";
+            if (currentPeriod !== "custom") fetchMetrics();
+        });
+    });
+
+    // ---- Event listeners ----
+    loginBtn.addEventListener("click", doLogin);
+    tokenInput.addEventListener("keydown", function (e) { if (e.key === "Enter") doLogin(); });
+    logoutBtn.addEventListener("click", function () { clearToken(); showLogin(); });
+    refreshBtn.addEventListener("click", fetchMetrics);
+    retryBtn.addEventListener("click", fetchMetrics);
+    applyRangeBtn.addEventListener("click", function () {
+        if (startDateIn.value && endDateIn.value) fetchMetrics();
+    });
+
+    // ---- Init ----
+    if (getToken()) { showDashboard(); } else { showLogin(); }
+})();
+</script>
+</body>
+</html>
