@@ -17,7 +17,6 @@ Key Features:
 Requirements: 3.1, 3.3, 5.1, 6.4, 7.1, 7.4, 7.6
 """
 
-import signal
 import os
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -33,11 +32,6 @@ from utils.logging import get_logger
 from config import settings
 
 logger = get_logger(__name__)
-
-
-class TimeoutError(Exception):
-    """Raised when agent execution exceeds timeout limit."""
-    pass
 
 
 class StrandsAgentService:
@@ -255,9 +249,9 @@ IMPORTANTE - Interpretação de Datas e Horários:
         # and is decorated with @tool so Strands can recognize it
         
         @tool
-        def register_student(name: str, phone_number: str, email: str, training_goal: str, payment_due_day: int = None) -> Dict[str, Any]:
-            """Register a new student and link them to the trainer."""
-            return student_tools.register_student(trainer_id, name, phone_number, email, training_goal, payment_due_day)
+        def register_student(name: str, phone_number: str, email: str, training_goal: str, payment_due_day: int = None, monthly_fee: float = None, plan_start_date: str = None) -> Dict[str, Any]:
+            """Register a new student and link them to the trainer. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
+            return student_tools.register_student(trainer_id, name, phone_number, email, training_goal, payment_due_day, monthly_fee, plan_start_date)
         
         @tool
         def view_students() -> Dict[str, Any]:
@@ -271,10 +265,12 @@ IMPORTANTE - Interpretação de Datas e Horários:
             email: str = None,
             phone_number: str = None,
             training_goal: str = None,
-            payment_due_day: int = None
+            payment_due_day: int = None,
+            monthly_fee: float = None,
+            plan_start_date: str = None,
         ) -> Dict[str, Any]:
-            """Update student information."""
-            return student_tools.update_student(trainer_id, student_id, name, email, phone_number, training_goal, payment_due_day)
+            """Update student information. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
+            return student_tools.update_student(trainer_id, student_id, name, email, phone_number, training_goal, payment_due_day, monthly_fee, plan_start_date)
         
         @tool
         def schedule_session(
@@ -325,15 +321,19 @@ IMPORTANTE - Interpretação de Datas e Horários:
         
         @tool
         def register_payment(
-            student_id: str,
+            student_name: str,
             amount: float,
             payment_date: str,
-            payment_method: str,
-            reference_month: str = None,
-            notes: str = None
+            student_id: str = None,
+            receipt_s3_key: str = None,
+            receipt_media_type: str = None,
+            session_id: str = None,
+            currency: str = "USD",
+            reference_start_month: str = None,
+            reference_end_month: str = None,
         ) -> Dict[str, Any]:
-            """Register a payment from a student."""
-            return payment_tools.register_payment(trainer_id, student_id, amount, payment_date, payment_method, reference_month, notes)
+            """Register a payment from a student. reference_start_month and reference_end_month define the period covered in YYYY-MM format (e.g. '2024-01' to '2024-03' for 3 months)."""
+            return payment_tools.register_payment(trainer_id, student_name, amount, payment_date, student_id, receipt_s3_key, receipt_media_type, session_id, currency, reference_start_month, reference_end_month)
         
         @tool
         def confirm_payment(payment_id: str) -> Dict[str, Any]:
@@ -342,13 +342,19 @@ IMPORTANTE - Interpretação de Datas e Horários:
         
         @tool
         def view_payments(
-            student_id: str = None,
+            student_name: str = None,
             status: str = None,
-            start_date: str = None,
-            end_date: str = None
         ) -> Dict[str, Any]:
-            """View payment records."""
-            return payment_tools.view_payments(trainer_id, student_id, status, start_date, end_date)
+            """View payment records for the trainer. Can filter by student name and/or status ('pending' or 'confirmed')."""
+            return payment_tools.view_payments(trainer_id, student_name, status)
+
+        @tool
+        def view_payment_status(
+            student_name: str = None,
+            student_id: str = None,
+        ) -> Dict[str, Any]:
+            """View month-by-month payment status for a student showing which months are paid, pending, or overdue. The student must have a plan configured with monthly_fee and plan_start_date."""
+            return payment_tools.view_payment_status(trainer_id, student_name, student_id)
         
         @tool
         def connect_calendar(provider: str) -> Dict[str, Any]:
@@ -369,6 +375,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
             register_payment,
             confirm_payment,
             view_payments,
+            view_payment_status,
             connect_calendar,
         ]
         
@@ -386,14 +393,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
         )
         
         return agent
-    
-    def _timeout_handler(self, signum, frame):
-        """
-        Signal handler for timeout protection.
-        
-        Raises TimeoutError when execution exceeds 30 seconds.
-        """
-        raise TimeoutError("Agent execution exceeded 30 seconds")
     
     def process_message(
         self,
@@ -538,17 +537,21 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     history_count=len(conversation_history),
                 )
             
-            # Set up timeout protection (30 seconds - increased from 10 for complex operations)
-            # Note: WhatsApp has ~20s timeout, but we allow 30s for complex multi-tool operations
-            signal.signal(signal.SIGALRM, self._timeout_handler)
-            signal.alarm(30)
+            # Execute agent with thread-based timeout (30 seconds)
+            # signal.SIGALRM doesn't interrupt blocking I/O in Lambda,
+            # so we use concurrent.futures for reliable timeout enforcement
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+            
+            def _run_agent():
+                return agent(message)
             
             try:
-                # Execute agent with message
-                # Strands agents are called like functions: agent(prompt)
-                # The agent will automatically use tools as needed
                 bedrock_start_time = datetime.utcnow()
-                agent_result = agent(message)
+                
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_run_agent)
+                    agent_result = future.result(timeout=30)
+                
                 bedrock_execution_time = (datetime.utcnow() - bedrock_start_time).total_seconds()
                 
                 logger.info(
@@ -558,7 +561,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 )
                 
                 # Extract response text from AgentResult object
-                # AgentResult has a 'text' or 'content' attribute with the response
                 if hasattr(agent_result, 'text'):
                     response_text = agent_result.text
                 elif hasattr(agent_result, 'content'):
@@ -566,11 +568,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 elif isinstance(agent_result, str):
                     response_text = agent_result
                 else:
-                    # Fallback: convert to string
                     response_text = str(agent_result)
-                
-                # Cancel timeout alarm
-                signal.alarm(0)
                 
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
                 
@@ -587,9 +585,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     'response': response_text
                 }
                 
-            except TimeoutError:
-                signal.alarm(0)  # Cancel alarm
-                
+            except FuturesTimeoutError:
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
                 
                 logger.error(
@@ -608,7 +604,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
             
             # Handle Bedrock API errors
             except ClientError as e:
-                signal.alarm(0)  # Cancel alarm
                 
                 error_code = e.response.get('Error', {}).get('Code', 'Unknown')
                 error_message = e.response.get('Error', {}).get('Message', str(e))
@@ -648,10 +643,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
                         'error': 'O serviço de IA está temporariamente indisponível. Por favor, tente novamente.'
                     }
             
-            finally:
-                # Ensure alarm is cancelled
-                signal.alarm(0)
-        
         except ValueError as e:
             # Validation errors - user-facing
             logger.warning(
