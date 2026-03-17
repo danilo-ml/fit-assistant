@@ -304,7 +304,8 @@ def view_students(trainer_id: str) -> Dict[str, Any]:
 @tool
 def update_student(
     trainer_id: str,
-    student_id: str,
+    student_id: str = None,
+    student_name: str = None,
     name: str = None,
     email: str = None,
     phone_number: str = None,
@@ -322,7 +323,8 @@ def update_student(
 
     Args:
         trainer_id: Trainer identifier (injected automatically by the service)
-        student_id: Student identifier (required - the ID of the student to update)
+        student_id: Student identifier (optional if student_name is provided)
+        student_name: Student name to look up (optional if student_id is provided)
         name: Updated student name (optional, e.g., "João Silva Santos")
         email: Updated student email (optional, e.g., "joao.novo@example.com")
         phone_number: Updated phone in E.164 format (optional, e.g., "+5511988887777")
@@ -357,6 +359,30 @@ def update_student(
         trainer = dynamodb_client.get_trainer(trainer_id)
         if not trainer:
             return {"success": False, "error": f"Trainer not found: {trainer_id}"}
+
+        # Resolve student_id from student_name if needed
+        if not student_id and student_name:
+            trainer_students = dynamodb_client.get_trainer_students(trainer_id)
+            matching = [
+                s for s in trainer_students
+                if s.get("name", "").lower() == student_name.lower()
+            ]
+            if not matching:
+                return {
+                    "success": False,
+                    "error": f"Student '{student_name}' not found.",
+                }
+            if len(matching) > 1:
+                return {
+                    "success": False,
+                    "error": f"Multiple students found with name '{student_name}'. Please provide student_id.",
+                }
+            student_id = matching[0]["student_id"]
+        elif not student_id and not student_name:
+            return {
+                "success": False,
+                "error": "Either student_id or student_name must be provided",
+            }
 
         # Verify student exists
         student_data = dynamodb_client.get_student(student_id)

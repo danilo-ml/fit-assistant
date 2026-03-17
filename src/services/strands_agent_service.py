@@ -260,7 +260,8 @@ IMPORTANTE - Interpretação de Datas e Horários:
         
         @tool
         def update_student(
-            student_id: str,
+            student_name: str = None,
+            student_id: str = None,
             name: str = None,
             email: str = None,
             phone_number: str = None,
@@ -269,8 +270,8 @@ IMPORTANTE - Interpretação de Datas e Horários:
             monthly_fee: float = None,
             plan_start_date: str = None,
         ) -> Dict[str, Any]:
-            """Update student information. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
-            return student_tools.update_student(trainer_id, student_id, name, email, phone_number, training_goal, payment_due_day, monthly_fee, plan_start_date)
+            """Update student information. Can identify student by student_name or student_id. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
+            return student_tools.update_student(trainer_id, student_id, student_name, name, email, phone_number, training_goal, payment_due_day, monthly_fee, plan_start_date)
         
         @tool
         def schedule_session(
