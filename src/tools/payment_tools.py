@@ -13,14 +13,16 @@ All functions follow the tool function pattern:
 - Handle errors gracefully
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
+from decimal import Decimal
 
 from strands import tool
 
 from models.entities import Payment
 from models.dynamodb_client import DynamoDBClient
 from utils.validation import InputSanitizer
+from services.payment_verification import PaymentVerificationService
 from config import settings
 
 # Initialize DynamoDB client
@@ -40,6 +42,8 @@ def register_payment(
     receipt_media_type: str = None,
     session_id: str = None,
     currency: str = "USD",
+    reference_start_month: str = None,
+    reference_end_month: str = None,
 ) -> Dict[str, Any]:
     """
     Register a payment record with status="pending".
@@ -58,6 +62,8 @@ def register_payment(
         receipt_media_type: MIME type of receipt media (optional)
         session_id: Associated session ID (optional)
         currency: Currency code (default: USD)
+        reference_start_month: Start of reference period in YYYY-MM format (optional)
+        reference_end_month: End of reference period in YYYY-MM format (optional)
 
     Returns:
         dict: {
@@ -209,6 +215,39 @@ def register_payment(
                     "error": f"Student {student_id} is not linked to trainer {trainer_id}",
                 }
 
+        # Validate reference months: both must be present or both absent
+        if (reference_start_month is None) != (reference_end_month is None):
+            return {
+                "success": False,
+                "error": "Both reference_start_month and reference_end_month must be provided",
+            }
+
+        # Perform payment verification if reference period is provided
+        verification_status = None
+        expected_amount = None
+        verification_warning = None
+
+        if reference_start_month is not None and reference_end_month is not None:
+            # Look up student to check for plan
+            student_data = dynamodb_client.get_student(student_id)
+            monthly_fee_raw = student_data.get("monthly_fee") if student_data else None
+
+            if monthly_fee_raw is not None:
+                monthly_fee = Decimal(str(monthly_fee_raw))
+                try:
+                    result = PaymentVerificationService.verify_payment(
+                        monthly_fee=monthly_fee,
+                        amount=Decimal(str(amount)),
+                        reference_start_month=reference_start_month,
+                        reference_end_month=reference_end_month,
+                    )
+                    verification_status = result["status"]
+                    expected_amount = result["expected_amount"]
+                except ValueError as e:
+                    return {"success": False, "error": str(e)}
+            else:
+                verification_warning = "No plan configured for student. Verification skipped."
+
         # Create payment entity with status="pending"
         payment = Payment(
             trainer_id=trainer_id,
@@ -221,6 +260,10 @@ def register_payment(
             receipt_s3_key=receipt_s3_key,
             receipt_media_type=receipt_media_type,
             session_id=session_id,
+            reference_start_month=reference_start_month,
+            reference_end_month=reference_end_month,
+            verification_status=verification_status,
+            expected_amount=expected_amount,
         )
 
         # Save payment to DynamoDB
@@ -245,8 +288,19 @@ def register_payment(
             response_data["receipt_media_type"] = payment.receipt_media_type
         if payment.session_id:
             response_data["session_id"] = payment.session_id
+        if payment.reference_start_month:
+            response_data["reference_start_month"] = payment.reference_start_month
+        if payment.reference_end_month:
+            response_data["reference_end_month"] = payment.reference_end_month
+        if payment.verification_status:
+            response_data["verification_status"] = payment.verification_status
+        if payment.expected_amount is not None:
+            response_data["expected_amount"] = str(payment.expected_amount)
 
-        return {"success": True, "data": response_data}
+        result = {"success": True, "data": response_data}
+        if verification_warning:
+            result["warning"] = verification_warning
+        return result
 
     except ValueError as e:
         # Pydantic validation errors
@@ -556,3 +610,126 @@ def view_payments(
     except Exception as e:
         # Unexpected errors
         return {"success": False, "error": f"Failed to retrieve payments: {str(e)}"}
+
+
+@tool
+def view_payment_status(
+    trainer_id: str,
+    student_name: str = None,
+    student_id: str = None,
+) -> Dict[str, Any]:
+    """
+    View month-by-month payment status for a student.
+
+    Use this tool when the trainer wants to see which months a student has paid,
+    which are pending, and which are overdue. The student must have a plan configured
+    with a monthly fee and plan start date.
+
+    Args:
+        trainer_id: Trainer identifier (injected automatically by the service)
+        student_name: Student name (optional, used to look up student)
+        student_id: Student identifier (optional, used directly if provided)
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'student_id': str,
+                'student_name': str,
+                'monthly_fee': str,
+                'currency': str,
+                'months': [
+                    {'month': 'YYYY-MM', 'status': 'paid'|'pending'|'overdue'},
+                    ...
+                ]
+            },
+            'error': str (optional, only present if success=False)
+        }
+    """
+    try:
+        # Must provide at least one identifier
+        if not student_name and not student_id:
+            return {
+                "success": False,
+                "error": "Either student_name or student_id must be provided",
+            }
+
+        # Verify trainer exists
+        trainer = dynamodb_client.get_trainer(trainer_id)
+        if not trainer:
+            return {"success": False, "error": f"Trainer not found: {trainer_id}"}
+
+        # Resolve student_id from name if needed
+        if not student_id:
+            trainer_students = dynamodb_client.get_trainer_students(trainer_id)
+            matching = [
+                s for s in trainer_students
+                if s.get("name", "").lower() == student_name.lower()
+            ]
+            if not matching:
+                return {
+                    "success": False,
+                    "error": f"Student '{student_name}' not found.",
+                }
+            if len(matching) > 1:
+                return {
+                    "success": False,
+                    "error": f"Multiple students found with name '{student_name}'. Please provide student_id.",
+                }
+            student_id = matching[0]["student_id"]
+
+        # Get student data
+        student_data = dynamodb_client.get_student(student_id)
+        if not student_data:
+            return {"success": False, "error": f"Student not found: {student_id}"}
+
+        # Check plan is configured
+        monthly_fee_raw = student_data.get("monthly_fee")
+        plan_start_date = student_data.get("plan_start_date")
+
+        if monthly_fee_raw is None or plan_start_date is None:
+            return {
+                "success": False,
+                "error": "Student has no plan configured. Cannot show payment status.",
+            }
+
+        # Get confirmed payments for the student
+        confirmed_payments = dynamodb_client.get_student_payments(
+            trainer_id, student_id, status="confirmed"
+        )
+
+        # Build payment dicts with reference periods
+        payment_dicts = []
+        for p in confirmed_payments:
+            if p.get("reference_start_month") and p.get("reference_end_month"):
+                payment_dicts.append({
+                    "reference_start_month": p["reference_start_month"],
+                    "reference_end_month": p["reference_end_month"],
+                })
+
+        # Derive current month
+        current_month = datetime.utcnow().strftime("%Y-%m")
+
+        # Get month-by-month status
+        months = PaymentVerificationService.get_payment_status_by_month(
+            plan_start_date=plan_start_date,
+            confirmed_payments=payment_dicts,
+            current_month=current_month,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "student_id": student_id,
+                "student_name": student_data.get("name", student_name or ""),
+                "monthly_fee": str(monthly_fee_raw),
+                "currency": student_data.get("currency", "BRL"),
+                "months": months,
+            },
+        }
+
+    except ValueError as e:
+        return {"success": False, "error": f"Validation error: {str(e)}"}
+
+    except Exception as e:
+        return {"success": False, "error": f"Failed to retrieve payment status: {str(e)}"}

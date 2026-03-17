@@ -13,6 +13,8 @@ All functions follow the tool function pattern:
 - Handle errors gracefully
 """
 
+import re
+from decimal import Decimal, InvalidOperation
 from typing import Dict, Any
 
 from strands import tool
@@ -30,7 +32,8 @@ dynamodb_client = DynamoDBClient(
 
 @tool
 def register_student(
-    trainer_id: str, name: str, phone_number: str, email: str, training_goal: str, payment_due_day: int = None
+    trainer_id: str, name: str, phone_number: str, email: str, training_goal: str,
+    payment_due_day: int = None, monthly_fee: float = None, plan_start_date: str = None,
 ) -> Dict[str, Any]:
     """
     Register a new student and link them to the trainer.
@@ -46,6 +49,8 @@ def register_student(
         email: Student's email address (e.g., "joao@example.com")
         training_goal: Student's training goal (e.g., "Perder peso e ganhar massa muscular")
         payment_due_day: Day of month (1-31) when student's payment is due (e.g., 10 for day 10)
+        monthly_fee: Monthly fee in BRL (e.g., 150.00). Must be positive with 2 decimal places.
+        plan_start_date: Plan start month in YYYY-MM format (e.g., "2024-01")
 
     Returns:
         dict: {
@@ -89,6 +94,23 @@ def register_student(
                     "success": False,
                     "error": "Dia de vencimento deve ser um número entre 1 e 31",
                 }
+
+        # Validate and convert monthly_fee if provided
+        monthly_fee_decimal = None
+        if monthly_fee is not None:
+            try:
+                monthly_fee_decimal = Decimal(str(monthly_fee))
+            except (InvalidOperation, ValueError):
+                return {"success": False, "error": "Monthly fee must be a valid number"}
+            if monthly_fee_decimal <= 0:
+                return {"success": False, "error": "Monthly fee must be greater than 0"}
+            if monthly_fee_decimal.as_tuple().exponent != -2:
+                return {"success": False, "error": "Monthly fee must have exactly 2 decimal places"}
+
+        # Validate plan_start_date if provided
+        if plan_start_date is not None:
+            if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', plan_start_date):
+                return {"success": False, "error": "Plan start date must be in YYYY-MM format"}
 
         # Validate required fields
         if not name:
@@ -160,7 +182,8 @@ def register_student(
         # Create new student entity
         student = Student(
             name=name, phone_number=phone_number, email=email, training_goal=training_goal,
-            payment_due_day=payment_due_day
+            payment_due_day=payment_due_day, monthly_fee=monthly_fee_decimal,
+            plan_start_date=plan_start_date,
         )
 
         # Save student to DynamoDB
@@ -181,6 +204,9 @@ def register_student(
                 "email": student.email,
                 "training_goal": student.training_goal,
                 "payment_due_day": student.payment_due_day,
+                "monthly_fee": str(student.monthly_fee) if student.monthly_fee is not None else None,
+                "currency": student.currency,
+                "plan_start_date": student.plan_start_date,
             },
         }
 
@@ -280,6 +306,8 @@ def update_student(
     phone_number: str = None,
     training_goal: str = None,
     payment_due_day: int = None,
+    monthly_fee: float = None,
+    plan_start_date: str = None,
 ) -> Dict[str, Any]:
     """
     Update student information.
@@ -296,6 +324,8 @@ def update_student(
         phone_number: Updated phone in E.164 format (optional, e.g., "+5511988887777")
         training_goal: Updated training goal (optional, e.g., "Perder 10kg em 3 meses")
         payment_due_day: Day of month (1-31) when student's payment is due (optional, e.g., 10)
+        monthly_fee: Monthly fee in BRL (optional, e.g., 150.00). Must be positive with 2 decimal places.
+        plan_start_date: Plan start month in YYYY-MM format (optional, e.g., "2024-01")
 
     Returns:
         dict: {
@@ -338,7 +368,7 @@ def update_student(
             }
 
         # Check if at least one field is provided for update
-        if not any([name, email, phone_number, training_goal, payment_due_day]):
+        if not any([name, email, phone_number, training_goal, payment_due_day, monthly_fee, plan_start_date]):
             return {
                 "success": False,
                 "error": "At least one field must be provided for update",
@@ -351,6 +381,23 @@ def update_student(
                     "success": False,
                     "error": "Dia de vencimento deve ser um número entre 1 e 31",
                 }
+
+        # Validate and convert monthly_fee if provided
+        monthly_fee_decimal = None
+        if monthly_fee is not None:
+            try:
+                monthly_fee_decimal = Decimal(str(monthly_fee))
+            except (InvalidOperation, ValueError):
+                return {"success": False, "error": "Monthly fee must be a valid number"}
+            if monthly_fee_decimal <= 0:
+                return {"success": False, "error": "Monthly fee must be greater than 0"}
+            if monthly_fee_decimal.as_tuple().exponent != -2:
+                return {"success": False, "error": "Monthly fee must have exactly 2 decimal places"}
+
+        # Validate plan_start_date if provided
+        if plan_start_date is not None:
+            if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', plan_start_date):
+                return {"success": False, "error": "Plan start date must be in YYYY-MM format"}
 
         # Sanitize inputs if provided
         update_params = {}
@@ -399,6 +446,11 @@ def update_student(
             phone_number=sanitized_params.get("phone_number", student_data["phone_number"]),
             training_goal=sanitized_params.get("training_goal", student_data["training_goal"]),
             payment_due_day=payment_due_day if payment_due_day is not None else student_data.get("payment_due_day"),
+            monthly_fee=monthly_fee_decimal if monthly_fee_decimal is not None else (
+                Decimal(str(student_data["monthly_fee"])) if student_data.get("monthly_fee") is not None else None
+            ),
+            currency=student_data.get("currency", "BRL"),
+            plan_start_date=plan_start_date if plan_start_date is not None else student_data.get("plan_start_date"),
             created_at=datetime.fromisoformat(student_data["created_at"]),
             updated_at=datetime.utcnow(),
         )
@@ -415,6 +467,9 @@ def update_student(
                 "email": updated_student.email,
                 "training_goal": updated_student.training_goal,
                 "payment_due_day": updated_student.payment_due_day,
+                "monthly_fee": str(updated_student.monthly_fee) if updated_student.monthly_fee is not None else None,
+                "currency": updated_student.currency,
+                "plan_start_date": updated_student.plan_start_date,
                 "updated_at": updated_student.updated_at.isoformat(),
             },
         }

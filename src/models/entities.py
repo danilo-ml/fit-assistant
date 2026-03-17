@@ -6,8 +6,9 @@ to serialize/deserialize to/from DynamoDB format following the single-table desi
 """
 
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from uuid import uuid4
 
 
@@ -71,6 +72,9 @@ class Student(BaseModel):
     phone_number: str
     training_goal: str
     payment_due_day: Optional[int] = None  # Day of month (1-31) for payment due date
+    monthly_fee: Optional[Decimal] = None  # Monthly fee in BRL (2 decimal places)
+    currency: str = "BRL"  # Always BRL for plan registrations
+    plan_start_date: Optional[str] = None  # ISO format YYYY-MM (month plan starts)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -90,6 +94,34 @@ class Student(BaseModel):
         if v is not None and (v < 1 or v > 31):
             raise ValueError('Payment due day must be between 1 and 31')
         return v
+
+    @field_validator('monthly_fee')
+    @classmethod
+    def validate_monthly_fee(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        """Validate monthly fee is positive with exactly 2 decimal places."""
+        if v is None:
+            return v
+        if not isinstance(v, Decimal):
+            try:
+                v = Decimal(str(v))
+            except (InvalidOperation, ValueError):
+                raise ValueError('Monthly fee must be a valid decimal number')
+        if v <= 0:
+            raise ValueError('Monthly fee must be greater than 0')
+        if v.as_tuple().exponent != -2:
+            raise ValueError('Monthly fee must have exactly 2 decimal places')
+        return v
+
+    @field_validator('plan_start_date')
+    @classmethod
+    def validate_plan_start_date(cls, v: Optional[str]) -> Optional[str]:
+        """Validate plan start date is in YYYY-MM format."""
+        if v is None:
+            return v
+        import re
+        if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', v):
+            raise ValueError('Plan start date must be in YYYY-MM format')
+        return v
     
     def to_dynamodb(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
@@ -102,16 +134,24 @@ class Student(BaseModel):
             'email': self.email,
             'phone_number': self.phone_number,
             'training_goal': self.training_goal,
+            'currency': self.currency,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
         if self.payment_due_day is not None:
             item['payment_due_day'] = self.payment_due_day
+        if self.monthly_fee is not None:
+            item['monthly_fee'] = str(self.monthly_fee)
+        if self.plan_start_date is not None:
+            item['plan_start_date'] = self.plan_start_date
         return item
     
     @classmethod
     def from_dynamodb(cls, item: Dict[str, Any]) -> 'Student':
         """Create instance from DynamoDB item."""
+        monthly_fee = None
+        if 'monthly_fee' in item and item['monthly_fee'] is not None:
+            monthly_fee = Decimal(str(item['monthly_fee']))
         return cls(
             student_id=item['student_id'],
             name=item['name'],
@@ -119,6 +159,9 @@ class Student(BaseModel):
             phone_number=item['phone_number'],
             training_goal=item['training_goal'],
             payment_due_day=item.get('payment_due_day'),
+            monthly_fee=monthly_fee,
+            currency=item.get('currency', 'BRL'),
+            plan_start_date=item.get('plan_start_date'),
             created_at=datetime.fromisoformat(item['created_at']),
             updated_at=datetime.fromisoformat(item['updated_at'])
         )
@@ -257,7 +300,7 @@ class Payment(BaseModel):
     trainer_id: str
     student_id: str
     student_name: str
-    amount: float = Field(ge=0)
+    amount: Decimal = Field(ge=0)
     currency: str = "USD"
     payment_date: str  # ISO date format YYYY-MM-DD
     payment_status: Literal["pending", "confirmed"] = "pending"
@@ -265,9 +308,72 @@ class Payment(BaseModel):
     receipt_media_type: Optional[str] = None
     confirmed_at: Optional[datetime] = None
     session_id: Optional[str] = None
+    reference_start_month: Optional[str] = None  # ISO YYYY-MM
+    reference_end_month: Optional[str] = None  # ISO YYYY-MM
+    verification_status: Optional[Literal["matched", "mismatched"]] = None
+    expected_amount: Optional[Decimal] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
+    @field_validator('amount', mode='before')
+    @classmethod
+    def validate_amount(cls, v: Any) -> Decimal:
+        """Convert amount to Decimal, accepting both float and Decimal inputs."""
+        if v is None:
+            raise ValueError('Amount is required')
+        if isinstance(v, Decimal):
+            return v
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError):
+            raise ValueError('Amount must be a valid number')
+
+    @field_validator('expected_amount', mode='before')
+    @classmethod
+    def validate_expected_amount(cls, v: Any) -> Optional[Decimal]:
+        """Convert expected_amount to Decimal, accepting both float and Decimal inputs."""
+        if v is None:
+            return v
+        if isinstance(v, Decimal):
+            return v
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError):
+            raise ValueError('Expected amount must be a valid number')
+
+    @field_validator('reference_start_month')
+    @classmethod
+    def validate_reference_start_month(cls, v: Optional[str]) -> Optional[str]:
+        """Validate reference start month is in YYYY-MM format."""
+        if v is None:
+            return v
+        import re
+        if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', v):
+            raise ValueError('Reference start month must be in YYYY-MM format')
+        return v
+
+    @field_validator('reference_end_month')
+    @classmethod
+    def validate_reference_end_month(cls, v: Optional[str]) -> Optional[str]:
+        """Validate reference end month is in YYYY-MM format."""
+        if v is None:
+            return v
+        import re
+        if not re.match(r'^\d{4}-(0[1-9]|1[0-2])$', v):
+            raise ValueError('Reference end month must be in YYYY-MM format')
+        return v
+
+    @model_validator(mode='after')
+    def validate_reference_months(self) -> 'Payment':
+        """Validate both reference months are present or both absent, and start <= end."""
+        start = self.reference_start_month
+        end = self.reference_end_month
+        if (start is None) != (end is None):
+            raise ValueError('Both reference_start_month and reference_end_month must be provided together')
+        if start is not None and end is not None and start > end:
+            raise ValueError('Reference start month must be <= end month')
+        return self
+
     def to_dynamodb(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
         item = {
@@ -278,7 +384,7 @@ class Payment(BaseModel):
             'trainer_id': self.trainer_id,
             'student_id': self.student_id,
             'student_name': self.student_name,
-            'amount': self.amount,
+            'amount': str(self.amount),
             'currency': self.currency,
             'payment_date': self.payment_date,
             'payment_status': self.payment_status,
@@ -294,18 +400,30 @@ class Payment(BaseModel):
             item['confirmed_at'] = self.confirmed_at.isoformat()
         if self.session_id:
             item['session_id'] = self.session_id
+        if self.reference_start_month is not None:
+            item['reference_start_month'] = self.reference_start_month
+        if self.reference_end_month is not None:
+            item['reference_end_month'] = self.reference_end_month
+        if self.verification_status is not None:
+            item['verification_status'] = self.verification_status
+        if self.expected_amount is not None:
+            item['expected_amount'] = str(self.expected_amount)
         
         return item
     
     @classmethod
     def from_dynamodb(cls, item: Dict[str, Any]) -> 'Payment':
         """Create instance from DynamoDB item."""
+        amount = Decimal(str(item['amount']))
+        expected_amount = None
+        if 'expected_amount' in item and item['expected_amount'] is not None:
+            expected_amount = Decimal(str(item['expected_amount']))
         return cls(
             payment_id=item['payment_id'],
             trainer_id=item['trainer_id'],
             student_id=item['student_id'],
             student_name=item['student_name'],
-            amount=item['amount'],
+            amount=amount,
             currency=item['currency'],
             payment_date=item['payment_date'],
             payment_status=item['payment_status'],
@@ -313,6 +431,10 @@ class Payment(BaseModel):
             receipt_media_type=item.get('receipt_media_type'),
             confirmed_at=datetime.fromisoformat(item['confirmed_at']) if item.get('confirmed_at') else None,
             session_id=item.get('session_id'),
+            reference_start_month=item.get('reference_start_month'),
+            reference_end_month=item.get('reference_end_month'),
+            verification_status=item.get('verification_status'),
+            expected_amount=expected_amount,
             created_at=datetime.fromisoformat(item['created_at']),
             updated_at=datetime.fromisoformat(item['updated_at'])
         )
