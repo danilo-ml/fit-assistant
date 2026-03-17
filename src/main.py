@@ -5,6 +5,8 @@ This module provides a FastAPI application for testing webhook endpoints locally
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from typing import Optional
 import json
 import os
@@ -17,6 +19,13 @@ app = FastAPI(
     title="FitAgent WhatsApp Assistant",
     description="Multi-tenant SaaS platform for personal trainers",
     version="0.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -126,3 +135,57 @@ async def test_process_message(
         "result": result,
         "message_body": message_body
     }
+
+
+# ------------------------------------------------------------------
+# Dashboard API routes (local development)
+# ------------------------------------------------------------------
+
+def _invoke_dashboard_handler(request: Request, method: str, path: str) -> Response:
+    """Build an API Gateway-style event and invoke the dashboard Lambda handler."""
+    from src.handlers.dashboard_handler import lambda_handler as dashboard_lambda_handler
+
+    headers = dict(request.headers)
+    params = dict(request.query_params)
+
+    event = {
+        "httpMethod": method,
+        "path": path,
+        "headers": headers,
+        "queryStringParameters": params if params else None,
+        "requestContext": {
+            "requestId": "local-dashboard",
+            "domainName": headers.get("host", "localhost:8000"),
+            "path": path,
+        },
+    }
+
+    result = dashboard_lambda_handler(event, None)
+
+    return Response(
+        content=result.get("body", ""),
+        status_code=result.get("statusCode", 200),
+        headers=result.get("headers", {}),
+    )
+
+
+@app.get("/dashboard/auth")
+async def dashboard_auth(request: Request) -> Response:
+    """Dashboard token validation endpoint."""
+    return _invoke_dashboard_handler(request, "GET", "/dashboard/auth")
+
+
+@app.get("/dashboard/metrics")
+async def dashboard_metrics(request: Request) -> Response:
+    """Dashboard metrics endpoint."""
+    return _invoke_dashboard_handler(request, "GET", "/dashboard/metrics")
+
+
+@app.options("/dashboard/{path:path}")
+async def dashboard_options(request: Request, path: str) -> Response:
+    """CORS preflight for dashboard routes."""
+    return _invoke_dashboard_handler(request, "OPTIONS", f"/dashboard/{path}")
+
+
+# Mount static website files last (catch-all)
+app.mount("/", StaticFiles(directory="static-website", html=True), name="static")

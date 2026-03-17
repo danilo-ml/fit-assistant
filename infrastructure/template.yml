@@ -1039,6 +1039,30 @@ Resources:
       MethodResponses:
         - StatusCode: 200
 
+  DashboardAuthOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ResourceId: !Ref DashboardAuthResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
   DashboardMetricsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
@@ -1060,13 +1084,39 @@ Resources:
       MethodResponses:
         - StatusCode: 200
 
+  DashboardMetricsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref WebhookApi
+      ResourceId: !Ref DashboardMetricsResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
   WebhookDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - WebhookMethod
       - OAuthCallbackMethod
       - DashboardAuthMethod
+      - DashboardAuthOptionsMethod
       - DashboardMetricsMethod
+      - DashboardMetricsOptionsMethod
     Properties:
       RestApiId: !Ref WebhookApi
       StageName: !Ref Environment

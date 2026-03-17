@@ -254,7 +254,9 @@
     "use strict";
 
     // ---- Configuration ----
-    var API_BASE = "https://api.fitassistant.com.br"; // API Gateway custom domain
+    var API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? ""  // local dev — same origin
+        : "https://api.fitassistant.com.br"; // production
     var TOKEN_KEY = "fitagent_dashboard_token";
     var TOKEN_TS_KEY = "fitagent_dashboard_token_ts";
     var SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours

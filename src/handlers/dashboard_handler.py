@@ -18,9 +18,9 @@ from typing import Any, Dict, Optional, Tuple
 import boto3
 from botocore.exceptions import ClientError
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.services.dashboard_metrics import DashboardMetricsService
-from src.utils.logging import get_logger
+from models.dynamodb_client import DynamoDBClient
+from services.dashboard_metrics import DashboardMetricsService
+from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -94,7 +94,7 @@ def _get_secret_token() -> str:
     Raises ``_SecretsManagerError`` if the secret cannot be retrieved.
     """
     try:
-        from src.config import settings
+        from config import settings
 
         secret_name = getattr(
             settings,

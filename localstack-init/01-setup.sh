@@ -142,6 +142,12 @@ awslocal secretsmanager create-secret \
     --secret-string '{"client_id":"test","client_secret":"test"}' \
     --region us-east-1
 
+awslocal secretsmanager create-secret \
+    --name fitagent/dashboard-token/local \
+    --description "Dashboard admin token" \
+    --secret-string '{"token":"local-dev-token"}' \
+    --region us-east-1
+
 echo "✓ Secrets Manager secrets created"
 
 echo "========================================="

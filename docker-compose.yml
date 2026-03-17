@@ -41,11 +41,13 @@ services:
       - OUTLOOK_CLIENT_ID=${OUTLOOK_CLIENT_ID}
       - OUTLOOK_CLIENT_SECRET=${OUTLOOK_CLIENT_SECRET}
       - OAUTH_REDIRECT_URI=http://localhost:8000/oauth/callback
+      - DASHBOARD_TOKEN_SECRET_NAME=fitagent/dashboard-token/local
     depends_on:
       - localstack
     volumes:
       - "./src:/app/src"
       - "./tests:/app/tests"
+      - "./static-website:/app/static-website"
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       - fitagent-network

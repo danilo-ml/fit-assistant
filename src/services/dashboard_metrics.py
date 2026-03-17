@@ -12,7 +12,7 @@ from typing import List, Dict, Any
 
 from boto3.dynamodb.conditions import Attr
 
-from src.models.dashboard_models import (
+from models.dashboard_models import (
     DailyDataPoint,
     DashboardResponse,
     GrowthMetrics,
@@ -22,7 +22,7 @@ from src.models.dashboard_models import (
     UserMetrics,
     safe_rate,
 )
-from src.models.dynamodb_client import DynamoDBClient
+from models.dynamodb_client import DynamoDBClient
 
 
 class DashboardMetricsService:
