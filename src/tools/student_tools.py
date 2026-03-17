@@ -104,8 +104,12 @@ def register_student(
                 return {"success": False, "error": "Monthly fee must be a valid number"}
             if monthly_fee_decimal <= 0:
                 return {"success": False, "error": "Monthly fee must be greater than 0"}
-            if monthly_fee_decimal.as_tuple().exponent != -2:
-                return {"success": False, "error": "Monthly fee must have exactly 2 decimal places"}
+            # Quantize to 2 decimal places (accepts 300, 300.0, 300.00)
+            two_places = Decimal('0.01')
+            quantized = monthly_fee_decimal.quantize(two_places)
+            if quantized != monthly_fee_decimal:
+                return {"success": False, "error": "Monthly fee must have at most 2 decimal places"}
+            monthly_fee_decimal = quantized
 
         # Validate plan_start_date if provided
         if plan_start_date is not None:
@@ -391,8 +395,12 @@ def update_student(
                 return {"success": False, "error": "Monthly fee must be a valid number"}
             if monthly_fee_decimal <= 0:
                 return {"success": False, "error": "Monthly fee must be greater than 0"}
-            if monthly_fee_decimal.as_tuple().exponent != -2:
-                return {"success": False, "error": "Monthly fee must have exactly 2 decimal places"}
+            # Quantize to 2 decimal places (accepts 300, 300.0, 300.00)
+            two_places = Decimal('0.01')
+            quantized = monthly_fee_decimal.quantize(two_places)
+            if quantized != monthly_fee_decimal:
+                return {"success": False, "error": "Monthly fee must have at most 2 decimal places"}
+            monthly_fee_decimal = quantized
 
         # Validate plan_start_date if provided
         if plan_start_date is not None:

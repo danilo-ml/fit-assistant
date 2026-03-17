@@ -578,6 +578,10 @@ def _handle_trainer(
                     "content": [{"text": entry.content}]
                 })
             
+            # Bedrock requires conversation to start with a user message
+            while conversation_history and conversation_history[0]["role"] != "user":
+                conversation_history.pop(0)
+            
             if conversation_history:
                 logger.info(
                     "Loaded conversation history",

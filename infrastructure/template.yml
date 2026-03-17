@@ -14,12 +14,12 @@ Parameters:
   TableReadCapacity:
     Type: Number
     Default: 5
-    Description: Read capacity units for DynamoDB table
+    Description: Read capacity units for DynamoDB table (only used if BillingMode is PROVISIONED)
 
   TableWriteCapacity:
     Type: Number
     Default: 5
-    Description: Write capacity units for DynamoDB table
+    Description: Write capacity units for DynamoDB table (only used if BillingMode is PROVISIONED)
 
   BedrockModelId:
     Type: String
@@ -325,10 +325,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub 'fitagent-main-${Environment}'
-      BillingMode: PROVISIONED
-      ProvisionedThroughput:
-        ReadCapacityUnits: !Ref TableReadCapacity
-        WriteCapacityUnits: !Ref TableWriteCapacity
+      BillingMode: PAY_PER_REQUEST
       
       # Primary Key
       AttributeDefinitions:
@@ -345,8 +342,6 @@ Resources:
         - AttributeName: session_datetime
           AttributeType: S
         - AttributeName: payment_status_created_at
-          AttributeType: S
-        - AttributeName: confirmation_status_datetime
           AttributeType: S
       
       KeySchema:
@@ -366,9 +361,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: !Ref TableReadCapacity
-            WriteCapacityUnits: !Ref TableWriteCapacity
         
         # Session date queries and calendar view
         - IndexName: session-date-index
@@ -379,9 +371,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: !Ref TableReadCapacity
-            WriteCapacityUnits: !Ref TableWriteCapacity
         
         # Payment tracking and filtering by status
         - IndexName: payment-status-index
@@ -392,22 +381,6 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: !Ref TableReadCapacity
-            WriteCapacityUnits: !Ref TableWriteCapacity
-        
-        # Session confirmation status queries and analytics
-        - IndexName: session-confirmation-index
-          KeySchema:
-            - AttributeName: trainer_id
-              KeyType: HASH
-            - AttributeName: confirmation_status_datetime
-              KeyType: RANGE
-          Projection:
-            ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: !Ref TableReadCapacity
-            WriteCapacityUnits: !Ref TableWriteCapacity
       
       # Enable point-in-time recovery
       PointInTimeRecoverySpecification:
@@ -1257,12 +1230,6 @@ Outputs:
     Value: payment-status-index
     Export:
       Name: !Sub '${AWS::StackName}-PaymentStatusIndex'
-  
-  SessionConfirmationIndexName:
-    Description: Session confirmation status GSI name
-    Value: session-confirmation-index
-    Export:
-      Name: !Sub '${AWS::StackName}-SessionConfirmationIndex'
 
   SessionConfirmationFunctionArn:
     Description: Session Confirmation Lambda function ARN

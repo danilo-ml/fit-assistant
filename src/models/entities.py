@@ -108,9 +108,12 @@ class Student(BaseModel):
                 raise ValueError('Monthly fee must be a valid decimal number')
         if v <= 0:
             raise ValueError('Monthly fee must be greater than 0')
-        if v.as_tuple().exponent != -2:
-            raise ValueError('Monthly fee must have exactly 2 decimal places')
-        return v
+        # Quantize to 2 decimal places (accepts 300, 300.0, 300.00)
+        two_places = Decimal('0.01')
+        quantized = v.quantize(two_places)
+        if quantized != v:
+            raise ValueError('Monthly fee must have at most 2 decimal places')
+        return quantized
 
     @field_validator('plan_start_date')
     @classmethod
