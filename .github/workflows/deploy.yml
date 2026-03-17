@@ -129,6 +129,18 @@ jobs:
             --s3-bucket fitagent-lambda-deployments-429649512384 \
             --s3-key production/lambda-latest.zip \
             --region ${{ env.AWS_REGION }}
+          
+          aws lambda update-function-code \
+            --function-name fitagent-payment-reminder-production \
+            --s3-bucket fitagent-lambda-deployments-429649512384 \
+            --s3-key production/lambda-latest.zip \
+            --region ${{ env.AWS_REGION }}
+          
+          aws lambda update-function-code \
+            --function-name fitagent-dashboard-production \
+            --s3-bucket fitagent-lambda-deployments-429649512384 \
+            --s3-key production/lambda-latest.zip \
+            --region ${{ env.AWS_REGION }}
 
       - name: Wait for Lambda updates to complete
         run: |
@@ -148,6 +160,28 @@ jobs:
             --stage-name production \
             --description "Auto-deploy after Lambda update" \
             --region ${{ env.AWS_REGION }}
+
+      - name: Deploy static website files
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name fitagent-production \
+            --query 'Stacks[0].Outputs[?OutputKey==`StaticWebsiteBucketName`].OutputValue' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+          
+          aws s3 sync static-website/ s3://$BUCKET/ \
+            --delete \
+            --region ${{ env.AWS_REGION }}
+          
+          DIST_ID=$(aws cloudformation describe-stacks \
+            --stack-name fitagent-production \
+            --query 'Stacks[0].Outputs[?OutputKey==`StaticWebsiteDistributionId`].OutputValue' \
+            --output text \
+            --region ${{ env.AWS_REGION }})
+          
+          aws cloudfront create-invalidation \
+            --distribution-id $DIST_ID \
+            --paths "/*"
 
       - name: Get API Gateway URL
         id: get-url
