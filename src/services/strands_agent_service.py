@@ -180,16 +180,18 @@ IMPORTANTE - Busca de Alunos:
 - NUNCA assuma ou invente um student_id
 - Após encontrar o aluno na lista, use o student_id retornado para agendar sessões ou registrar pagamentos
 
-IMPORTANTE - Links e URLs:
-- Quando uma ferramenta retornar uma URL (como oauth_url para conexão de calendário), você DEVE incluir a URL completa na sua resposta
-- NUNCA diga apenas "clique no link acima" ou "veja a URL acima" sem incluir a URL real na mensagem
+IMPORTANTE - Conexão de Calendário (Google/Outlook):
+- Quando o usuário pedir para conectar/sincronizar calendário, você DEVE chamar a ferramenta connect_calendar com o provider correto ("google" ou "outlook")
+- NUNCA invente ou construa URLs de OAuth manualmente. SEMPRE use a ferramenta connect_calendar que retorna a URL correta
+- A URL retornada pela ferramenta contém credenciais e parâmetros de segurança únicos. Inventar uma URL vai causar erro para o usuário
+- Após receber o resultado da ferramenta, copie a URL EXATA do campo oauth_url e inclua na resposta
+- NUNCA modifique, reconstrua ou invente client_id, redirect_uri ou qualquer parâmetro da URL
 - Formate a URL em uma linha separada para que o WhatsApp a reconheça como link clicável
-- Exemplo de resposta com URL:
-  "Para conectar seu Google Calendar, clique no link abaixo para autorizar o acesso:
 
-  https://accounts.google.com/o/oauth2/v2/auth?...
-
-  O link expira em 10 minutos. Após autorizar, seu calendário será sincronizado automaticamente."
+IMPORTANTE - Links e URLs:
+- Quando uma ferramenta retornar uma URL, você DEVE incluir a URL EXATA e COMPLETA na sua resposta
+- NUNCA invente URLs. Use SOMENTE URLs retornadas pelas ferramentas
+- NUNCA diga apenas "clique no link acima" sem incluir a URL real na mensagem
 """
         
         logger.info(
@@ -370,7 +372,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
         
         @tool
         def connect_calendar(provider: str) -> Dict[str, Any]:
-            """Connect Google Calendar or Outlook Calendar to sync training sessions."""
+            """Connect Google Calendar or Outlook Calendar to sync training sessions. IMPORTANT: You MUST call this tool to get the OAuth URL. NEVER invent or construct OAuth URLs yourself."""
             return calendar_tools.connect_calendar(trainer_id, provider)
         
         # Collect all wrapper tools
