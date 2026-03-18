@@ -179,6 +179,17 @@ IMPORTANTE - Busca de Alunos:
 - Quando o usuário mencionar o NOME de um aluno (ex: "Juliana Nano", "Pedro"), use schedule_session ou schedule_recurring_session diretamente com student_name
 - NUNCA assuma ou invente um student_id
 - Após encontrar o aluno na lista, use o student_id retornado para agendar sessões ou registrar pagamentos
+
+IMPORTANTE - Links e URLs:
+- Quando uma ferramenta retornar uma URL (como oauth_url para conexão de calendário), você DEVE incluir a URL completa na sua resposta
+- NUNCA diga apenas "clique no link acima" ou "veja a URL acima" sem incluir a URL real na mensagem
+- Formate a URL em uma linha separada para que o WhatsApp a reconheça como link clicável
+- Exemplo de resposta com URL:
+  "Para conectar seu Google Calendar, clique no link abaixo para autorizar o acesso:
+
+  https://accounts.google.com/o/oauth2/v2/auth?...
+
+  O link expira em 10 minutos. Após autorizar, seu calendário será sincronizado automaticamente."
 """
         
         logger.info(

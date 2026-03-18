@@ -170,6 +170,8 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
         # Build the full OAuth URL with query parameters
         oauth_url = f"{auth_url}?{urllib.parse.urlencode(params)}"
 
+        provider_name = "Google Calendar" if provider == "google" else "Outlook Calendar"
+
         return {
             "success": True,
             "data": {
@@ -177,6 +179,10 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
                 "provider": provider,
                 "expires_in": 600,  # 10 minutes
             },
+            "message": (
+                f"Link de autorização do {provider_name} gerado com sucesso. "
+                f"IMPORTANTE: Envie este link completo ao usuário para que ele clique e autorize: {oauth_url}"
+            ),
         }
 
     except ValueError as e:
