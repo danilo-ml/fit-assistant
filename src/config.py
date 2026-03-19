@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     oauth_redirect_uri: str = ""
     
     # AWS Bedrock Configuration
-    bedrock_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    bedrock_model_id: str = "us.amazon.nova-pro-v1:0"
     bedrock_region: str = "us-east-1"
     aws_bedrock_endpoint_url: Optional[str] = None  # Separate endpoint for Bedrock (use real AWS if None)
     

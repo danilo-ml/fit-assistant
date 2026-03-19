@@ -93,7 +93,7 @@ class StrandsAgentService:
                     model_id=self.model_id,
                     region_name=self.region,
                     endpoint_url=self.endpoint_url,
-                    temperature=0.5,
+                    temperature=0.2,
                 )
             except ValueError as e:
                 # Handle OpenTelemetry propagator initialization errors
@@ -108,7 +108,7 @@ class StrandsAgentService:
                         model_id=self.model_id,
                         region_name=self.region,
                         endpoint_url=self.endpoint_url,
-                        temperature=0.5,
+                        temperature=0.2,
                     )
                 else:
                     # Re-raise if it's a different ValueError
@@ -120,6 +120,14 @@ class StrandsAgentService:
         
         # PT-BR system prompt for Brazilian Portuguese responses
         self.system_prompt = """Você é um assistente de IA para personal trainers no Brasil.
+
+REGRA MAIS IMPORTANTE - NUNCA INVENTE RESULTADOS:
+- Você DEVE chamar as ferramentas disponíveis para executar QUALQUER ação (agendar sessão, registrar aluno, registrar pagamento, etc.)
+- NUNCA finja que executou uma ação sem chamar a ferramenta correspondente
+- NUNCA invente IDs de sessão, IDs de aluno, URLs ou qualquer dado
+- Se você não chamou a ferramenta, NÃO diga que a ação foi realizada
+- Quando o usuário confirmar uma ação (ex: "Confirmado", "Sim"), você DEVE chamar a ferramenta naquele momento
+- Se a ferramenta retornar erro, informe o erro ao usuário - NUNCA finja que deu certo
 
 Sua função é ajudar personal trainers a gerenciar seus negócios através do WhatsApp:
 - Registrar e gerenciar alunos
