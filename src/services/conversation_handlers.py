@@ -355,6 +355,27 @@ class TrainerHandler:
         phone_number = user_data.get("phone_number")
         message_text = message_body.get("body", "").strip()
         
+        # Intercept calendar sync requests directly to avoid AI hallucinating OAuth URLs
+        calendar_response = self._handle_calendar_sync_if_requested(
+            trainer_id, message_text, request_id
+        )
+        if calendar_response:
+            self.state_manager.update_state(
+                phone_number=phone_number,
+                state="TRAINER_MENU",
+                user_id=trainer_id,
+                user_type="TRAINER",
+                message={"role": "user", "content": message_text},
+            )
+            self.state_manager.update_state(
+                phone_number=phone_number,
+                state="TRAINER_MENU",
+                user_id=trainer_id,
+                user_type="TRAINER",
+                message={"role": "assistant", "content": calendar_response},
+            )
+            return calendar_response
+        
         # Process message with Strands agent service
         try:
             result = self.agent_service.process_message(
@@ -417,6 +438,82 @@ class TrainerHandler:
             
             return (
                 "Algo deu errado ao processar sua solicitação. "
+                "Por favor, tente novamente em alguns instantes."
+            )
+    
+    def _handle_calendar_sync_if_requested(
+        self,
+        trainer_id: str,
+        message_text: str,
+        request_id: str,
+    ) -> Optional[str]:
+        """
+        Detect calendar sync requests and handle them directly.
+        
+        This bypasses the AI agent to prevent hallucinated OAuth URLs.
+        Calls connect_calendar tool directly and formats the response.
+        
+        Returns:
+            Formatted response with real OAuth URL, or None if not a calendar request.
+        """
+        text_lower = message_text.lower()
+        
+        # Detect calendar sync intent
+        calendar_keywords = ["sincronizar", "sincroniza", "sync", "conectar calendario",
+                             "conectar calendário", "calendar", "google calendar",
+                             "outlook calendar", "vincular calendario", "vincular calendário"]
+        
+        if not any(kw in text_lower for kw in calendar_keywords):
+            return None
+        
+        # Determine provider
+        if "outlook" in text_lower or "microsoft" in text_lower:
+            provider = "outlook"
+            provider_name = "Outlook"
+        else:
+            provider = "google"
+            provider_name = "Google Calendar"
+        
+        logger.info(
+            "Calendar sync request intercepted",
+            trainer_id=trainer_id,
+            provider=provider,
+            request_id=request_id,
+        )
+        
+        try:
+            from tools.calendar_tools import connect_calendar
+            result = connect_calendar(trainer_id, provider)
+            
+            if result.get("success"):
+                oauth_url = result["data"]["oauth_url"]
+                return (
+                    f"Para conectar seu {provider_name}, clique no link abaixo para autorizar o acesso:\n\n"
+                    f"{oauth_url}\n\n"
+                    f"O link expira em 10 minutos. Após autorizar, seu calendário será "
+                    f"sincronizado automaticamente com suas sessões de treino."
+                )
+            else:
+                error = result.get("error", "Erro desconhecido")
+                logger.error(
+                    "Calendar connect_calendar failed",
+                    trainer_id=trainer_id,
+                    error=error,
+                    request_id=request_id,
+                )
+                return (
+                    f"Não foi possível gerar o link de conexão com o {provider_name}: {error}\n\n"
+                    "Por favor, tente novamente ou entre em contato com o suporte."
+                )
+        except Exception as e:
+            logger.error(
+                "Calendar sync interception error",
+                trainer_id=trainer_id,
+                error=str(e),
+                request_id=request_id,
+            )
+            return (
+                f"Ocorreu um erro ao tentar conectar seu {provider_name}. "
                 "Por favor, tente novamente em alguns instantes."
             )
 

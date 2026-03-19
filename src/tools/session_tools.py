@@ -679,6 +679,7 @@ def view_calendar(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     filter: Optional[str] = None,
+    student_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     View training sessions in the trainer's calendar within a date range.
@@ -686,12 +687,15 @@ def view_calendar(
     Use this tool when the trainer wants to see their scheduled sessions.
     The tool can show sessions for today, this week, this month, or a custom date range.
     Sessions are returned in chronological order (earliest first).
+    Optionally filter by student name to see only sessions involving a specific student,
+    including group sessions where that student is enrolled.
 
     Args:
         trainer_id: Trainer identifier (injected automatically by the service)
         start_date: Start date in ISO format YYYY-MM-DD (optional if filter provided, e.g., "2024-01-20")
         end_date: End date in ISO format YYYY-MM-DD (optional if filter provided, e.g., "2024-01-25")
         filter: Convenient date range filter: "day" (today), "week" (next 7 days), or "month" (next 30 days) (optional)
+        student_name: Filter sessions by student name (optional). For individual sessions, matches the session's student_name. For group sessions, matches any enrolled student's name. Case-insensitive.
 
     Returns:
         dict: {
@@ -832,12 +836,34 @@ def view_calendar(
         # Sort sessions by datetime (chronological order - earliest first)
         sessions.sort(key=lambda s: s.get("session_datetime", ""))
 
+        # Filter by student name if provided
+        if student_name:
+            sanitized_student_name = InputSanitizer.sanitize_tool_parameters(
+                {"student_name": student_name}
+            )["student_name"]
+            student_name_lower = sanitized_student_name.lower()
+
+            filtered_sessions = []
+            for session in sessions:
+                # Individual sessions: match the session's student_name
+                if session.get("student_name", "").lower() == student_name_lower:
+                    filtered_sessions.append(session)
+                # Group sessions: match any enrolled student's name
+                elif session.get("session_type") == "group":
+                    enrolled = session.get("enrolled_students", [])
+                    if any(
+                        s.get("student_name", "").lower() == student_name_lower
+                        for s in enrolled
+                    ):
+                        filtered_sessions.append(session)
+            sessions = filtered_sessions
+
         # Format sessions for response
         formatted_sessions = []
         for session in sessions:
             session_data = {
                 "session_id": session["session_id"],
-                "student_name": session["student_name"],
+                "student_name": session.get("student_name", ""),
                 "session_datetime": session["session_datetime"],
                 "duration_minutes": session["duration_minutes"],
                 "status": session["status"],
@@ -852,6 +878,12 @@ def view_calendar(
 
             if session.get("student_confirmed_at"):
                 session_data["student_confirmed_at"] = session["student_confirmed_at"]
+
+            # Include group session metadata
+            if session.get("session_type") == "group":
+                session_data["session_type"] = "group"
+                session_data["enrolled_student_count"] = len(session.get("enrolled_students", []))
+                session_data["max_participants"] = session.get("max_participants")
 
             formatted_sessions.append(session_data)
 

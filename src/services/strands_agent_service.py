@@ -18,7 +18,7 @@ Requirements: 3.1, 3.3, 5.1, 6.4, 7.1, 7.4, 7.6
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 import boto3
@@ -26,7 +26,7 @@ from strands import Agent
 from strands.models.bedrock import BedrockModel
 from botocore.exceptions import ClientError
 
-from tools import student_tools, session_tools, payment_tools, calendar_tools
+from tools import student_tools, session_tools, payment_tools, calendar_tools, group_session_tools
 from models.dynamodb_client import DynamoDBClient
 from utils.logging import get_logger
 from config import settings
@@ -375,6 +375,43 @@ IMPORTANTE - Interpretação de Datas e Horários:
             """Connect Google Calendar or Outlook Calendar to sync training sessions. IMPORTANT: You MUST call this tool to get the OAuth URL. NEVER invent or construct OAuth URLs yourself."""
             return calendar_tools.connect_calendar(trainer_id, provider)
         
+        # Group session wrapper tools
+        @tool
+        def configure_group_size_limit(limit: int) -> Dict[str, Any]:
+            """Configure the maximum number of students allowed in a group session. Limit must be between 2 and 50."""
+            return group_session_tools.configure_group_size_limit(trainer_id, limit)
+
+        @tool
+        def schedule_group_session(
+            date: str,
+            time: str,
+            duration_minutes: int,
+            location: str = None,
+            max_participants: int = None,
+        ) -> Dict[str, Any]:
+            """Schedule a new group training session for multiple students. Defaults max_participants to the trainer's configured group_size_limit."""
+            return group_session_tools.schedule_group_session(trainer_id, date, time, duration_minutes, location, max_participants)
+
+        @tool
+        def enroll_student(session_id: str, student_names: List[str]) -> Dict[str, Any]:
+            """Enroll one or more students in a group training session. Validates each student individually."""
+            return group_session_tools.enroll_student(trainer_id, session_id, student_names)
+
+        @tool
+        def remove_student(session_id: str, student_name: str) -> Dict[str, Any]:
+            """Remove a student from a group training session."""
+            return group_session_tools.remove_student(trainer_id, session_id, student_name)
+
+        @tool
+        def cancel_group_session(session_id: str, reason: str = None) -> Dict[str, Any]:
+            """Cancel an existing group training session. Returns the list of enrolled student names."""
+            return group_session_tools.cancel_group_session(trainer_id, session_id, reason)
+
+        @tool
+        def reschedule_group_session(session_id: str, new_date: str, new_time: str) -> Dict[str, Any]:
+            """Reschedule an existing group training session to a new date and time. Preserves all enrolled students."""
+            return group_session_tools.reschedule_group_session(trainer_id, session_id, new_date, new_time)
+
         # Collect all wrapper tools
         tools = [
             register_student,
@@ -391,6 +428,12 @@ IMPORTANTE - Interpretação de Datas e Horários:
             view_payments,
             view_payment_status,
             connect_calendar,
+            configure_group_size_limit,
+            schedule_group_session,
+            enroll_student,
+            remove_student,
+            cancel_group_session,
+            reschedule_group_session,
         ]
         
         # Create agent with system prompt and trainer-specific tools

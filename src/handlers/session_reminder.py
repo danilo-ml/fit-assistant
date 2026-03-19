@@ -5,10 +5,11 @@ This handler is triggered hourly by EventBridge and:
 1. Queries sessions scheduled within the reminder window (1-48 hours ahead)
 2. Gets trainer reminder configuration (default 24 hours)
 3. Sends WhatsApp reminders to students with session details
-4. Excludes cancelled sessions
-5. Records reminder delivery in DynamoDB
+4. For group sessions, sends individual reminders to each enrolled student
+5. Excludes cancelled sessions
+6. Records reminder delivery in DynamoDB
 
-Requirements: 8.1, 8.2, 8.4, 8.5, 8.6
+Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6
 """
 
 import uuid
@@ -92,14 +93,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             sessions_processed += 1
 
             try:
-                # Send reminder
-                _send_session_reminder(session, current_time)
-                reminders_sent += 1
+                # Send reminder(s) - group sessions return counts for multiple students
+                result = _send_session_reminder(session, current_time)
+                sent = result.get('sent', 1)
+                failed = result.get('failed', 0)
+                reminders_sent += sent
+                reminders_failed += failed
 
                 logger.info(
-                    "Session reminder sent successfully",
+                    "Session reminder(s) sent successfully",
                     session_id=session.get("session_id"),
-                    student_id=session.get("student_id"),
+                    session_type=session.get("session_type", "individual"),
+                    sent=sent,
+                    failed=failed,
                     session_datetime=session.get("session_datetime"),
                 )
 
@@ -227,14 +233,33 @@ def _get_sessions_needing_reminders(
                 session_id = session.get('session_id')
                 existing_reminders = dynamodb_client.get_session_reminders(session_id)
                 
-                # Check if a session reminder was already sent
-                already_sent = any(
-                    r.get('reminder_type') == 'session'
-                    for r in existing_reminders
-                )
+                session_type = session.get('session_type', 'individual')
                 
-                if not already_sent:
-                    sessions_needing_reminders.append(session)
+                if session_type == 'group':
+                    # For group sessions, check if all enrolled students already have reminders
+                    enrolled_students = session.get('enrolled_students', [])
+                    reminded_phones = {
+                        r.get('recipient_phone')
+                        for r in existing_reminders
+                        if r.get('reminder_type') == 'session'
+                    }
+                    # Include session if any enrolled student still needs a reminder
+                    has_unremindered = False
+                    for enrolled in enrolled_students:
+                        student = dynamodb_client.get_student(enrolled.get('student_id'))
+                        if student and student.get('phone_number') not in reminded_phones:
+                            has_unremindered = True
+                            break
+                    if has_unremindered:
+                        sessions_needing_reminders.append(session)
+                else:
+                    # For individual sessions, check if any session reminder was sent
+                    already_sent = any(
+                        r.get('reminder_type') == 'session'
+                        for r in existing_reminders
+                    )
+                    if not already_sent:
+                        sessions_needing_reminders.append(session)
         
         return sessions_needing_reminders
         
@@ -247,9 +272,187 @@ def _get_sessions_needing_reminders(
         return []
 
 
-def _send_session_reminder(session: Dict[str, Any], current_time: datetime) -> None:
+def _send_session_reminder(session: Dict[str, Any], current_time: datetime) -> Dict[str, int]:
     """
-    Send session reminder to student via WhatsApp.
+    Send session reminder(s) via WhatsApp.
+
+    For individual sessions, sends one reminder to the student.
+    For group sessions, iterates over enrolled_students and sends
+    individual reminders to each student, recording a separate
+    Reminder entity per student.
+
+    Args:
+        session: Session record from DynamoDB
+        current_time: Current UTC time
+
+    Returns:
+        Dict with 'sent' and 'failed' counts
+
+    Raises:
+        Exception: If reminder sending fails for individual sessions
+    """
+    session_type = session.get('session_type', 'individual')
+
+    if session_type == 'group':
+        return _send_group_session_reminders(session, current_time)
+    else:
+        _send_individual_session_reminder(session, current_time)
+        return {'sent': 1, 'failed': 0}
+
+
+def _send_group_session_reminders(session: Dict[str, Any], current_time: datetime) -> Dict[str, int]:
+    """
+    Send individual WhatsApp reminders to each enrolled student in a group session.
+
+    Args:
+        session: Group session record from DynamoDB
+        current_time: Current UTC time
+
+    Returns:
+        Dict with 'sent' and 'failed' counts
+    """
+    session_id = session.get('session_id')
+    trainer_id = session.get('trainer_id')
+    enrolled_students = session.get('enrolled_students', [])
+    session_datetime = datetime.fromisoformat(session.get('session_datetime'))
+    duration_minutes = session.get('duration_minutes', 60)
+    location = session.get('location', '')
+
+    # Get trainer info for message
+    trainer = dynamodb_client.get_trainer(trainer_id)
+    trainer_name = trainer.get('name', 'your trainer') if trainer else 'your trainer'
+
+    # Get existing reminders to skip students who already received one
+    existing_reminders = dynamodb_client.get_session_reminders(session_id)
+    reminded_phones = {
+        r.get('recipient_phone')
+        for r in existing_reminders
+        if r.get('reminder_type') == 'session'
+    }
+
+    # Format session datetime for display
+    session_date = session_datetime.strftime('%A, %B %d, %Y')
+    session_time = session_datetime.strftime('%I:%M %p')
+
+    # Build reminder message
+    message_parts = [
+        "🔔 Session Reminder",
+        "",
+        f"You have a group training session with {trainer_name}:",
+        f"📅 {session_date}",
+        f"🕐 {session_time}",
+        f"⏱️ Duration: {duration_minutes} minutes",
+    ]
+
+    if location:
+        message_parts.append(f"📍 Location: {location}")
+
+    message_parts.append("")
+    message_parts.append("See you there! 💪")
+
+    message_body = "\n".join(message_parts)
+
+    sent = 0
+    failed = 0
+
+    for enrolled in enrolled_students:
+        student_id = enrolled.get('student_id')
+
+        try:
+            # Look up student phone number
+            student = dynamodb_client.get_student(student_id)
+            if not student:
+                logger.error(
+                    "Enrolled student not found for group session reminder",
+                    session_id=session_id,
+                    student_id=student_id,
+                )
+                failed += 1
+                continue
+
+            student_phone = student.get('phone_number')
+            if not student_phone:
+                logger.error(
+                    "Enrolled student phone number missing",
+                    session_id=session_id,
+                    student_id=student_id,
+                )
+                failed += 1
+                continue
+
+            # Skip if already reminded
+            if student_phone in reminded_phones:
+                logger.info(
+                    "Skipping already-reminded student",
+                    session_id=session_id,
+                    student_id=student_id,
+                )
+                continue
+
+            # Send WhatsApp message
+            logger.info(
+                "Sending group session reminder",
+                session_id=session_id,
+                student_id=student_id,
+                student_phone=student_phone,
+                session_datetime=session_datetime.isoformat(),
+            )
+
+            result = twilio_client.send_message(
+                to=student_phone,
+                body=message_body,
+            )
+
+            # Record reminder delivery in DynamoDB
+            reminder_id = str(uuid.uuid4())
+            reminder_record = {
+                'PK': f'SESSION#{session_id}',
+                'SK': f'REMINDER#{reminder_id}',
+                'entity_type': 'REMINDER',
+                'reminder_id': reminder_id,
+                'session_id': session_id,
+                'reminder_type': 'session',
+                'recipient_phone': student_phone,
+                'student_id': student_id,
+                'status': 'sent',
+                'sent_at': current_time.isoformat(),
+                'message_sid': result.get('message_sid'),
+                'created_at': current_time.isoformat(),
+            }
+
+            if result.get('status') in ['delivered', 'sent']:
+                reminder_record['status'] = 'delivered'
+                reminder_record['delivered_at'] = current_time.isoformat()
+
+            dynamodb_client.put_reminder(reminder_record)
+
+            logger.info(
+                "Group session reminder recorded",
+                reminder_id=reminder_id,
+                session_id=session_id,
+                student_id=student_id,
+                message_sid=result.get('message_sid'),
+                status=reminder_record['status'],
+            )
+
+            sent += 1
+
+        except Exception as e:
+            failed += 1
+            logger.error(
+                "Failed to send group session reminder to student",
+                session_id=session_id,
+                student_id=student_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+    return {'sent': sent, 'failed': failed}
+
+
+def _send_individual_session_reminder(session: Dict[str, Any], current_time: datetime) -> None:
+    """
+    Send session reminder to a single student via WhatsApp (individual sessions).
 
     Args:
         session: Session record from DynamoDB

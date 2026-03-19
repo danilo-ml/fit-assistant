@@ -535,6 +535,7 @@ class TrainerConfig(BaseModel):
     payment_reminder_day: int = Field(default=1, ge=1, le=28)
     payment_reminders_enabled: bool = True
     session_reminders_enabled: bool = True
+    group_size_limit: int = Field(default=10, ge=2, le=50)
     timezone: str = "America/New_York"
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -550,6 +551,7 @@ class TrainerConfig(BaseModel):
             'payment_reminder_day': self.payment_reminder_day,
             'payment_reminders_enabled': self.payment_reminders_enabled,
             'session_reminders_enabled': self.session_reminders_enabled,
+            'group_size_limit': self.group_size_limit,
             'timezone': self.timezone,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
@@ -564,6 +566,7 @@ class TrainerConfig(BaseModel):
             payment_reminder_day=item['payment_reminder_day'],
             payment_reminders_enabled=item['payment_reminders_enabled'],
             session_reminders_enabled=item['session_reminders_enabled'],
+            group_size_limit=item.get('group_size_limit', 10),
             timezone=item['timezone'],
             created_at=datetime.fromisoformat(item['created_at']),
             updated_at=datetime.fromisoformat(item['updated_at'])
@@ -750,6 +753,70 @@ class Reminder(BaseModel):
         )
 
 
+
+
+class GroupSession(BaseModel):
+    """Group training session entity model."""
+
+    session_id: str = Field(default_factory=lambda: uuid4().hex)
+    entity_type: Literal["SESSION"] = "SESSION"
+    trainer_id: str
+    session_type: Literal["group"] = "group"
+    session_datetime: datetime
+    duration_minutes: int = Field(ge=15, le=480)
+    location: Optional[str] = None
+    status: Literal["scheduled", "confirmed", "cancelled", "completed"] = "scheduled"
+    max_participants: int = Field(ge=2, le=50)
+    enrolled_students: List[Dict[str, str]] = Field(default_factory=list)
+    calendar_event_id: Optional[str] = None
+    calendar_provider: Optional[Literal["google", "outlook"]] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    def to_dynamodb(self) -> Dict[str, Any]:
+        """Convert to DynamoDB item format."""
+        item = {
+            'PK': f'TRAINER#{self.trainer_id}',
+            'SK': f'SESSION#{self.session_id}',
+            'entity_type': self.entity_type,
+            'session_id': self.session_id,
+            'trainer_id': self.trainer_id,
+            'session_type': self.session_type,
+            'session_datetime': self.session_datetime.isoformat(),
+            'duration_minutes': self.duration_minutes,
+            'status': self.status,
+            'max_participants': self.max_participants,
+            'enrolled_students': self.enrolled_students,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+        }
+
+        if self.location:
+            item['location'] = self.location
+        if self.calendar_event_id:
+            item['calendar_event_id'] = self.calendar_event_id
+        if self.calendar_provider:
+            item['calendar_provider'] = self.calendar_provider
+
+        return item
+
+    @classmethod
+    def from_dynamodb(cls, item: Dict[str, Any]) -> 'GroupSession':
+        """Create instance from DynamoDB item."""
+        return cls(
+            session_id=item['session_id'],
+            trainer_id=item['trainer_id'],
+            session_datetime=datetime.fromisoformat(item['session_datetime']),
+            duration_minutes=item['duration_minutes'],
+            location=item.get('location'),
+            status=item.get('status', 'scheduled'),
+            max_participants=item['max_participants'],
+            enrolled_students=item.get('enrolled_students', []),
+            calendar_event_id=item.get('calendar_event_id'),
+            calendar_provider=item.get('calendar_provider'),
+            created_at=datetime.fromisoformat(item['created_at']),
+            updated_at=datetime.fromisoformat(item['updated_at']),
+        )
 
 
 class MenuContext(BaseModel):

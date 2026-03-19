@@ -321,6 +321,17 @@ Resources:
         DNSName: !GetAtt StaticWebsiteDistribution.DomainName
         HostedZoneId: Z2FDTNDATAQYW2
 
+  # Google Site Verification TXT record
+  GoogleSiteVerificationRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref StaticWebsiteHostedZone
+      Name: !Ref DomainName
+      Type: TXT
+      TTL: '300'
+      ResourceRecords:
+        - '"google-site-verification=_DUB0cj-0VNYrW1KLtgAom13P2YxIyF-H_ruRdBn2Cs"'
+
   FitAgentTable:
     Type: AWS::DynamoDB::Table
     Properties:

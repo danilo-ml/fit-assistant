@@ -1485,3 +1485,126 @@ class TestViewCalendar:
 
         assert result["success"] is True
         assert result["data"]["total_count"] == 3
+
+    def test_view_calendar_student_name_filter_individual_session(
+        self, mock_dynamodb_client, trainer_data, sample_sessions
+    ):
+        """Test filtering by student name returns matching individual sessions."""
+        mock_dynamodb_client.get_trainer.return_value = trainer_data
+        mock_dynamodb_client.get_sessions_by_date_range.return_value = sample_sessions
+
+        result = view_calendar(
+            trainer_id="trainer123", filter="week", student_name="Alice"
+        )
+
+        assert result["success"] is True
+        for s in result["data"]["sessions"]:
+            assert s["student_name"].lower() == "alice"
+
+    def test_view_calendar_student_name_filter_includes_group_sessions(
+        self, mock_dynamodb_client, trainer_data
+    ):
+        """Test that student_name filter includes group sessions where the student is enrolled."""
+        individual_session = {
+            "session_id": "sess1",
+            "student_name": "Alice",
+            "session_datetime": "2024-01-20T14:00:00",
+            "duration_minutes": 60,
+            "status": "scheduled",
+        }
+        group_session = {
+            "session_id": "sess2",
+            "student_name": "",
+            "session_datetime": "2024-01-21T10:00:00",
+            "duration_minutes": 90,
+            "status": "scheduled",
+            "session_type": "group",
+            "max_participants": 5,
+            "enrolled_students": [
+                {"student_id": "s1", "student_name": "Alice"},
+                {"student_id": "s2", "student_name": "Bob"},
+            ],
+        }
+        unrelated_session = {
+            "session_id": "sess3",
+            "student_name": "Charlie",
+            "session_datetime": "2024-01-22T09:00:00",
+            "duration_minutes": 60,
+            "status": "scheduled",
+        }
+        mock_dynamodb_client.get_trainer.return_value = trainer_data
+        mock_dynamodb_client.get_sessions_by_date_range.return_value = [
+            individual_session, group_session, unrelated_session
+        ]
+
+        result = view_calendar(
+            trainer_id="trainer123", filter="week", student_name="Alice"
+        )
+
+        assert result["success"] is True
+        assert result["data"]["total_count"] == 2
+        session_ids = [s["session_id"] for s in result["data"]["sessions"]]
+        assert "sess1" in session_ids
+        assert "sess2" in session_ids
+        assert "sess3" not in session_ids
+
+    def test_view_calendar_student_name_filter_case_insensitive(
+        self, mock_dynamodb_client, trainer_data
+    ):
+        """Test that student_name filter is case-insensitive for group sessions."""
+        group_session = {
+            "session_id": "sess1",
+            "student_name": "",
+            "session_datetime": "2024-01-21T10:00:00",
+            "duration_minutes": 90,
+            "status": "scheduled",
+            "session_type": "group",
+            "max_participants": 5,
+            "enrolled_students": [
+                {"student_id": "s1", "student_name": "Alice Smith"},
+            ],
+        }
+        mock_dynamodb_client.get_trainer.return_value = trainer_data
+        mock_dynamodb_client.get_sessions_by_date_range.return_value = [group_session]
+
+        result = view_calendar(
+            trainer_id="trainer123", filter="week", student_name="alice smith"
+        )
+
+        assert result["success"] is True
+        assert result["data"]["total_count"] == 1
+
+    def test_view_calendar_student_name_filter_no_match(
+        self, mock_dynamodb_client, trainer_data
+    ):
+        """Test that student_name filter returns empty when no sessions match."""
+        group_session = {
+            "session_id": "sess1",
+            "student_name": "",
+            "session_datetime": "2024-01-21T10:00:00",
+            "duration_minutes": 90,
+            "status": "scheduled",
+            "session_type": "group",
+            "max_participants": 5,
+            "enrolled_students": [
+                {"student_id": "s1", "student_name": "Bob"},
+            ],
+        }
+        individual_session = {
+            "session_id": "sess2",
+            "student_name": "Charlie",
+            "session_datetime": "2024-01-22T09:00:00",
+            "duration_minutes": 60,
+            "status": "scheduled",
+        }
+        mock_dynamodb_client.get_trainer.return_value = trainer_data
+        mock_dynamodb_client.get_sessions_by_date_range.return_value = [
+            group_session, individual_session
+        ]
+
+        result = view_calendar(
+            trainer_id="trainer123", filter="week", student_name="Nonexistent"
+        )
+
+        assert result["success"] is True
+        assert result["data"]["total_count"] == 0
