@@ -92,8 +92,7 @@ class StrandsAgentService:
                 self.model = BedrockModel(
                     model_id=self.model_id,
                     region_name=self.region,
-                    endpoint_url=self.endpoint_url,
-                    temperature=0.2,
+                    endpoint_url=self.endpoint_url
                 )
             except ValueError as e:
                 # Handle OpenTelemetry propagator initialization errors
@@ -183,6 +182,13 @@ IMPORTANTE - Agendamentos Recorrentes:
 - Dias da semana aceitos: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo
 - A ferramenta cria múltiplas sessões automaticamente e detecta conflitos
 - Nunca use o horário UTC e nem mostre aos treinadores e alunos. Sempre utilize e se necessário mostrar o horário de Brasilia
+
+IMPORTANTE - Sessões em Grupo:
+- schedule_group_session APENAS cria a sessão vazia, SEM inscrever nenhum aluno
+- Para inscrever alunos, você DEVE chamar enroll_student SEPARADAMENTE após criar a sessão
+- NUNCA diga que um aluno foi inscrito se você não chamou enroll_student
+- Fluxo correto: 1) schedule_group_session → 2) enroll_student com o session_id retornado
+- Se o usuário pedir para criar sessão em grupo E adicionar alunos, faça as DUAS chamadas de ferramenta
 
 IMPORTANTE - Busca de Alunos:
 - Quando o usuário mencionar o NOME de um aluno (ex: "Juliana Nano", "Pedro"), use schedule_session ou schedule_recurring_session diretamente com student_name
