@@ -1,15 +1,16 @@
 """
 Strands Agent Service for FitAgent.
 
-This service provides a simple interface for processing trainer messages using
-the official strands-agents SDK. It implements a single-agent architecture with
-all FitAgent tools registered, multi-tenancy enforcement via trainer_id injection,
-and PT-BR (Brazilian Portuguese) language support.
+This service provides a multi-agent architecture for processing trainer messages using
+the official Strands Agents SDK Agents-as-Tools pattern. An orchestrator agent delegates
+to 4 specialized domain agents (Student, Session, Payment, Calendar), each wrapped as a
+@tool function with focused tools.
 
 Key Features:
-- Single agent with all tools (student, session, payment management)
+- Agents-as-Tools pattern: orchestrator + 4 domain agents
+- Each domain agent has focused tools (3-12) for reliable tool execution
 - Multi-tenancy via trainer_id injection into tool execution (agent created per-request)
-- Timeout protection (10-second limit for WhatsApp compatibility)
+- Timeout protection (30-second limit for WhatsApp compatibility)
 - Structured logging for all operations
 - PT-BR system prompt for Brazilian Portuguese responses
 - Error handling with user-friendly messages
@@ -37,14 +38,14 @@ logger = get_logger(__name__)
 class StrandsAgentService:
     """
     Service for processing trainer messages using Strands Agents SDK.
-    
-    Provides a simple interface for WhatsApp message processing with:
-    - Single agent with all FitAgent tools
-    - Multi-tenancy via trainer_id injection
-    - Error handling and timeout protection
-    - Structured logging
-    - PT-BR (Brazilian Portuguese) responses
-    
+
+    Uses the Agents-as-Tools multi-agent pattern:
+    - Orchestrator agent routes queries to domain specialists
+    - Student agent: register, view, update students (3 tools)
+    - Session agent: schedule, reschedule, cancel sessions + group sessions (12 tools)
+    - Payment agent: register, confirm, view payments (4 tools)
+    - Calendar agent: connect calendar (1 tool)
+
     Example:
         service = StrandsAgentService()
         result = service.process_message(
@@ -54,7 +55,7 @@ class StrandsAgentService:
         )
         # Returns: {'success': True, 'response': 'Aluno João registrado com sucesso!'}
     """
-    
+
     def __init__(
         self,
         model_id: str = None,
@@ -62,8 +63,8 @@ class StrandsAgentService:
         endpoint_url: str = None
     ):
         """
-        Initialize Strands Agent Service with Bedrock configuration and PT-BR system prompt.
-        
+        Initialize Strands Agent Service with Bedrock configuration.
+
         Args:
             model_id: Bedrock model ID (defaults to settings.bedrock_model_id)
             region: AWS region (defaults to settings.bedrock_region)
@@ -72,22 +73,19 @@ class StrandsAgentService:
         self.model_id = model_id or settings.bedrock_model_id
         self.region = region or settings.bedrock_region
         self.endpoint_url = endpoint_url or settings.aws_bedrock_endpoint_url
-        
+
         # Initialize DynamoDB client for tool execution
         self.db_client = DynamoDBClient(
             table_name=settings.dynamodb_table,
             endpoint_url=settings.aws_endpoint_url
         )
-        
+
         # Temporarily remove AWS_ENDPOINT_URL to prevent Bedrock from using LocalStack
-        # Save original value to restore after BedrockModel initialization
         original_endpoint_url = os.environ.get('AWS_ENDPOINT_URL')
         if original_endpoint_url:
             del os.environ['AWS_ENDPOINT_URL']
-        
+
         try:
-            # Create Bedrock model instance (reused across requests)
-            # With AWS_ENDPOINT_URL removed, boto3 will use real AWS endpoints
             try:
                 self.model = BedrockModel(
                     model_id=self.model_id,
@@ -95,14 +93,11 @@ class StrandsAgentService:
                     endpoint_url=self.endpoint_url
                 )
             except ValueError as e:
-                # Handle OpenTelemetry propagator initialization errors
-                # This can occur in Lambda environments where some propagators are not available
                 if "Propagator" in str(e) and "not found" in str(e):
                     logger.warning(
                         "OpenTelemetry propagator initialization failed, continuing with degraded tracing",
                         error=str(e)
                     )
-                    # Retry initialization - the patched OpenTelemetry should skip missing propagators
                     self.model = BedrockModel(
                         model_id=self.model_id,
                         region_name=self.region,
@@ -110,137 +105,42 @@ class StrandsAgentService:
                         temperature=0.2,
                     )
                 else:
-                    # Re-raise if it's a different ValueError
                     raise
         finally:
-            # Restore AWS_ENDPOINT_URL for other services (DynamoDB, S3, SQS)
             if original_endpoint_url:
                 os.environ['AWS_ENDPOINT_URL'] = original_endpoint_url
-        
-        # PT-BR system prompt for Brazilian Portuguese responses
-        self.system_prompt = """Você é um assistente de IA para personal trainers no Brasil.
 
-REGRA MAIS IMPORTANTE - NUNCA INVENTE RESULTADOS:
-- Você DEVE chamar as ferramentas disponíveis para executar QUALQUER ação (agendar sessão, registrar aluno, registrar pagamento, etc.)
-- NUNCA finja que executou uma ação sem chamar a ferramenta correspondente
-- NUNCA invente IDs de sessão, IDs de aluno, URLs ou qualquer dado
-- Se você não chamou a ferramenta, NÃO diga que a ação foi realizada
-- Quando o usuário confirmar uma ação (ex: "Confirmado", "Sim"), você DEVE chamar a ferramenta naquele momento
-- Se a ferramenta retornar erro, informe o erro ao usuário - NUNCA finja que deu certo
-
-Sua função é ajudar personal trainers a gerenciar seus negócios através do WhatsApp:
-- Registrar e gerenciar alunos
-- Agendar, reagendar e cancelar sessões de treino
-- Registrar e acompanhar pagamentos
-- Visualizar calendário e compromissos
-
-IMPORTANTE:
-- Sempre responda em português brasileiro (PT-BR)
-- Seja claro, objetivo e amigável
-- Otimize a experiência do usuário, se for pedir informações peça de uma vez só e não enviar em várias mensagens
-- Use as ferramentas disponíveis para executar as ações solicitadas
-- Confirme as ações realizadas com detalhes relevantes
-- Se houver erro, explique de forma clara e sugira alternativas. Não devolva erro sistemico para o usuário final
-- Você tem acesso ao histórico recente da conversa para manter contexto entre mensagens
-- Use o histórico para entender referências a mensagens anteriores (ex: "sim", "esse mesmo", "pode fazer")
-- Se o usuário responder com informações incompletas (ex: "próximo mês"), use o contexto da conversa anterior para entender a intenção
-
-REGRA CRÍTICA - Coleta de Informações:
-- NUNCA invente ou assuma informações que o usuário não forneceu
-- Se uma ferramenta requer parâmetros OBRIGATÓRIOS que não foram fornecidos, PERGUNTE ao usuário
-- Parâmetros OPCIONAIS podem ser omitidos (deixe como None/null)
-- Para registrar aluno, você PRECISA de: nome completo, telefone (formato +5511999999999), email, objetivo de treino e dia de vencimento da mensalidade (1-31)
-- Para agendar sessão, você PRECISA de: student_id (ID do aluno), data/hora (formato ISO), duração em minutos
-- Para agendar sessão, são OPCIONAIS: local (location) e observações (notes)
-- Para registrar pagamento, você PRECISA de: student_id, valor, data, método de pagamento
-- Se faltar qualquer informação OBRIGATÓRIA, pergunte de forma clara e específica
-- SEMPRE confirme os detalhes antes de executar ações importantes
-
-Quando o trainer solicitar uma ação:
-1. Identifique a ferramenta apropriada
-2. Verifique se você tem TODAS as informações necessárias
-3. Se faltar informação, PERGUNTE antes de executar
-4. Execute a ferramenta SOMENTE quando tiver todos os dados
-5. Confirme o resultado em linguagem natural
-
-Exemplos de interações:
-- "Registrar novo aluno João" → PERGUNTE: "Para registrar o aluno João, preciso do telefone (formato +5511999999999), email, objetivo de treino e dia de vencimento da mensalidade (1-31). Pode me passar essas informações?"
-- "Registrar aluno João Silva, telefone +5511988887777, email joao@email.com, objetivo: ganhar massa, vencimento dia 10" → use register_student com todos os parâmetros
-- "Agendar sessão com Juliana Nano dia 11/03/2026 às 08:00, 60 minutos" → use schedule_session com student_name="Juliana Nano", date="2026-03-11", time="08:00", duration_minutes=60
-- "Agendar sessão semanalmente toda terça-feira com Juliana Nano às 18:00, 60 minutos" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira", time="18:00", duration_minutes=60
-- "Agendar sessão toda terça e quinta com Juliana Nano das 17:00 às 18:00 recorrente" → use schedule_recurring_session com student_name="Juliana Nano", day_of_week="terça-feira, quinta-feira", time="17:00", duration_minutes=60
-- "Cancelar sessão xyz789" → use cancel_session
-- "Cancelar todas as sessões com Juliana Nano" → use cancel_student_sessions com student_name="Juliana Nano"
-- "Ver meus alunos" → use view_students
-- "Registrar pagamento de R$100 do Pedro" → use register_payment
-
-IMPORTANTE - Agendamentos Recorrentes:
-- Para sessões semanais/recorrentes, use schedule_recurring_session
-- Suporta múltiplos dias da semana separados por vírgula (ex: "terça-feira, quinta-feira")
-- Se o número de semanas não for especificado, o padrão é 12 semanas (3 meses)
-- Quando o usuário disser "recorrente" sem especificar período, use o padrão de 12 semanas
-- Dias da semana aceitos: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo
-- A ferramenta cria múltiplas sessões automaticamente e detecta conflitos
-- Nunca use o horário UTC e nem mostre aos treinadores e alunos. Sempre utilize e se necessário mostrar o horário de Brasilia
-
-IMPORTANTE - Sessões em Grupo:
-- schedule_group_session APENAS cria a sessão vazia, SEM inscrever nenhum aluno
-- Para inscrever alunos, você DEVE chamar enroll_student SEPARADAMENTE após criar a sessão
-- NUNCA diga que um aluno foi inscrito se você não chamou enroll_student
-- Fluxo correto: 1) schedule_group_session → 2) enroll_student com o session_id retornado
-- Se o usuário pedir para criar sessão em grupo E adicionar alunos, faça as DUAS chamadas de ferramenta
-
-IMPORTANTE - Busca de Alunos:
-- Quando o usuário mencionar o NOME de um aluno (ex: "Juliana Nano", "Pedro"), use schedule_session ou schedule_recurring_session diretamente com student_name
-- NUNCA assuma ou invente um student_id
-- Após encontrar o aluno na lista, use o student_id retornado para agendar sessões ou registrar pagamentos
-
-IMPORTANTE - Conexão de Calendário (Google/Outlook):
-- Quando o usuário pedir para conectar/sincronizar calendário, você DEVE chamar a ferramenta connect_calendar com o provider correto ("google" ou "outlook")
-- NUNCA invente ou construa URLs de OAuth manualmente. SEMPRE use a ferramenta connect_calendar que retorna a URL correta
-- A URL retornada pela ferramenta contém credenciais e parâmetros de segurança únicos. Inventar uma URL vai causar erro para o usuário
-- Após receber o resultado da ferramenta, copie a URL EXATA do campo oauth_url e inclua na resposta
-- NUNCA modifique, reconstrua ou invente client_id, redirect_uri ou qualquer parâmetro da URL
-- Formate a URL em uma linha separada para que o WhatsApp a reconheça como link clicável
-
-IMPORTANTE - Links e URLs:
-- Quando uma ferramenta retornar uma URL, você DEVE incluir a URL EXATA e COMPLETA na sua resposta
-- NUNCA invente URLs. Use SOMENTE URLs retornadas pelas ferramentas
-- NUNCA diga apenas "clique no link acima" sem incluir a URL real na mensagem
-"""
-        
         logger.info(
             "StrandsAgentService initialized",
             model_id=self.model_id,
             region=self.region,
             has_endpoint=bool(self.endpoint_url)
         )
-    
-    def _create_agent_for_trainer(self, trainer_id: str) -> Agent:
+
+    def _build_domain_agent_tools(self, trainer_id: str):
         """
-        Create a Strands Agent with tools bound to a specific trainer_id.
-        
-        This method creates wrapper tools that inject trainer_id while preserving
-        the @tool decorator metadata that Strands requires.
-        
+        Build 4 domain agent @tool functions for the Agents-as-Tools pattern.
+
+        Each domain agent is a @tool-decorated function that creates a specialized
+        Agent with focused tools bound to the given trainer_id via closure.
+
         Args:
             trainer_id: Trainer identifier to inject into all tool calls
-            
+
         Returns:
-            Configured Agent instance with trainer-specific tools
+            Tuple of (student_agent, session_agent, payment_agent, calendar_agent)
         """
         from strands import tool
         from datetime import datetime, timezone, timedelta
-        
+
         # Get current date/time in Brazil timezone (UTC-3)
         brazil_offset = timezone(timedelta(hours=-3))
         now = datetime.now(brazil_offset)
         current_date = now.strftime('%d/%m/%Y')
+        current_date_iso = now.strftime('%Y-%m-%d')
         current_time = now.strftime('%H:%M')
-        current_datetime_iso = now.strftime('%Y-%m-%dT%H:%M:%S')
         day_of_week = now.strftime('%A')
-        
-        # Map English day names to Portuguese
+
         day_names = {
             'Monday': 'Segunda-feira',
             'Tuesday': 'Terça-feira',
@@ -251,159 +151,63 @@ IMPORTANTE - Links e URLs:
             'Sunday': 'Domingo'
         }
         day_of_week_pt = day_names.get(day_of_week, day_of_week)
-        
-        # Add current date/time context to system prompt
-        system_prompt_with_context = f"""{self.system_prompt}
 
-CONTEXTO TEMPORAL ATUAL:
-- Data de hoje: {current_date} ({day_of_week_pt})
-- Hora atual: {current_time} (horário de Brasília)
+        model = self.model
 
-IMPORTANTE - Interpretação de Datas e Horários:
-- O usuário fornece horários no fuso horário de Brasília (UTC-3)
-- As ferramentas esperam horários no fuso de Brasília (NÃO converta para UTC)
-- NUNCA adicione 3 horas. Passe o horário EXATAMENTE como o usuário informou
-- Exemplo: usuário diz "15:00" → use "15:00" na ferramenta (sem conversão)
-- Exemplo: usuário diz "hoje às 08:00" → use data de hoje e "08:00" (sem conversão)
-- Quando o usuário mencionar "hoje" = {current_date}
-- Quando o usuário mencionar "amanhã" = dia seguinte a {current_date}
-- Formato de data para ferramentas: YYYY-MM-DD
-- Formato de hora para ferramentas: HH:MM
-- NUNCA altere datas ou horários fornecidos pelo usuário
-"""
-        
-        # Create wrapper functions that inject trainer_id
-        # Each wrapper preserves the original function's signature (minus trainer_id)
-        # and is decorated with @tool so Strands can recognize it
-        
+        # ── Student domain inner tools ──────────────────────────────────
         @tool
         def register_student(name: str, phone_number: str, email: str, training_goal: str, payment_due_day: int = None, monthly_fee: float = None, plan_start_date: str = None) -> Dict[str, Any]:
             """Register a new student and link them to the trainer. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
             return student_tools.register_student(trainer_id, name, phone_number, email, training_goal, payment_due_day, monthly_fee, plan_start_date)
-        
+
         @tool
         def view_students() -> Dict[str, Any]:
             """View all students linked to the trainer."""
             return student_tools.view_students(trainer_id)
-        
+
         @tool
         def update_student(
-            student_name: str = None,
-            student_id: str = None,
-            name: str = None,
-            email: str = None,
-            phone_number: str = None,
-            training_goal: str = None,
-            payment_due_day: int = None,
-            monthly_fee: float = None,
-            plan_start_date: str = None,
+            student_name: str = None, student_id: str = None, name: str = None,
+            email: str = None, phone_number: str = None, training_goal: str = None,
+            payment_due_day: int = None, monthly_fee: float = None, plan_start_date: str = None,
         ) -> Dict[str, Any]:
             """Update student information. Can identify student by student_name or student_id. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
             return student_tools.update_student(trainer_id, student_id, student_name, name, email, phone_number, training_goal, payment_due_day, monthly_fee, plan_start_date)
-        
+
+        # ── Session domain inner tools ──────────────────────────────────
         @tool
-        def schedule_session(
-            student_name: str,
-            date: str,
-            time: str,
-            duration_minutes: int,
-            location: str = None
-        ) -> Dict[str, Any]:
+        def schedule_session(student_name: str, date: str, time: str, duration_minutes: int, location: str = None) -> Dict[str, Any]:
             """Schedule a new training session."""
             return session_tools.schedule_session(trainer_id, student_name, date, time, duration_minutes, location)
-        
+
         @tool
-        def schedule_recurring_session(
-            student_name: str,
-            day_of_week: str,
-            time: str,
-            duration_minutes: int,
-            number_of_weeks: int = None,
-            location: str = None
-        ) -> Dict[str, Any]:
+        def schedule_recurring_session(student_name: str, day_of_week: str, time: str, duration_minutes: int, number_of_weeks: int = None, location: str = None) -> Dict[str, Any]:
             """Schedule recurring training sessions on the same day(s) and time each week. Supports multiple days comma-separated (e.g. 'terça-feira, quinta-feira'). If number_of_weeks is not provided, defaults to 12 weeks (3 months)."""
             return session_tools.schedule_recurring_session(trainer_id, student_name, day_of_week, time, duration_minutes, number_of_weeks, location)
-        
+
         @tool
-        def reschedule_session(
-            session_id: str,
-            new_date: str,
-            new_time: str
-        ) -> Dict[str, Any]:
+        def reschedule_session(session_id: str, new_date: str, new_time: str) -> Dict[str, Any]:
             """Reschedule an existing training session."""
             return session_tools.reschedule_session(trainer_id, session_id, new_date, new_time)
-        
+
         @tool
         def cancel_session(session_id: str, reason: str = None) -> Dict[str, Any]:
             """Cancel a training session."""
             return session_tools.cancel_session(trainer_id, session_id, reason)
-        
+
         @tool
         def cancel_student_sessions(student_name: str, reason: str = None) -> Dict[str, Any]:
             """Cancel all scheduled sessions with a specific student."""
             return session_tools.cancel_student_sessions(trainer_id, student_name, reason)
-        
+
         @tool
         def view_calendar(start_date: str = None, end_date: str = None, filter: str = None) -> Dict[str, Any]:
             """View training sessions in the calendar."""
             return session_tools.view_calendar(trainer_id, start_date, end_date, filter)
-        
-        @tool
-        def register_payment(
-            student_name: str,
-            amount: float,
-            payment_date: str,
-            student_id: str = None,
-            receipt_s3_key: str = None,
-            receipt_media_type: str = None,
-            session_id: str = None,
-            currency: str = "USD",
-            reference_start_month: str = None,
-            reference_end_month: str = None,
-        ) -> Dict[str, Any]:
-            """Register a payment from a student. reference_start_month and reference_end_month define the period covered in YYYY-MM format (e.g. '2024-01' to '2024-03' for 3 months)."""
-            return payment_tools.register_payment(trainer_id, student_name, amount, payment_date, student_id, receipt_s3_key, receipt_media_type, session_id, currency, reference_start_month, reference_end_month)
-        
-        @tool
-        def confirm_payment(payment_id: str) -> Dict[str, Any]:
-            """Confirm a payment."""
-            return payment_tools.confirm_payment(trainer_id, payment_id)
-        
-        @tool
-        def view_payments(
-            student_name: str = None,
-            status: str = None,
-        ) -> Dict[str, Any]:
-            """View payment records for the trainer. Can filter by student name and/or status ('pending' or 'confirmed')."""
-            return payment_tools.view_payments(trainer_id, student_name, status)
 
+        # ── Group session inner tools ───────────────────────────────────
         @tool
-        def view_payment_status(
-            student_name: str = None,
-            student_id: str = None,
-        ) -> Dict[str, Any]:
-            """View month-by-month payment status for a student showing which months are paid, pending, or overdue. The student must have a plan configured with monthly_fee and plan_start_date."""
-            return payment_tools.view_payment_status(trainer_id, student_name, student_id)
-        
-        @tool
-        def connect_calendar(provider: str) -> Dict[str, Any]:
-            """Connect Google Calendar or Outlook Calendar to sync training sessions. IMPORTANT: You MUST call this tool to get the OAuth URL. NEVER invent or construct OAuth URLs yourself."""
-            return calendar_tools.connect_calendar(trainer_id, provider)
-        
-        # Group session wrapper tools
-        @tool
-        def configure_group_size_limit(limit: int) -> Dict[str, Any]:
-            """Configure the maximum number of students allowed in a group session. Limit must be between 2 and 50."""
-            return group_session_tools.configure_group_size_limit(trainer_id, limit)
-
-        @tool
-        def schedule_group_session(
-            date: str,
-            time: str,
-            duration_minutes: int,
-            location: str = None,
-            max_participants: int = None,
-        ) -> Dict[str, Any]:
+        def schedule_group_session(date: str, time: str, duration_minutes: int, location: str = None, max_participants: int = None) -> Dict[str, Any]:
             """Schedule a new group training session for multiple students. Defaults max_participants to the trainer's configured group_size_limit."""
             return group_session_tools.schedule_group_session(trainer_id, date, time, duration_minutes, location, max_participants)
 
@@ -427,45 +231,176 @@ IMPORTANTE - Interpretação de Datas e Horários:
             """Reschedule an existing group training session to a new date and time. Preserves all enrolled students."""
             return group_session_tools.reschedule_group_session(trainer_id, session_id, new_date, new_time)
 
-        # Collect all wrapper tools
-        tools = [
-            register_student,
-            view_students,
-            update_student,
-            schedule_session,
-            schedule_recurring_session,
-            reschedule_session,
-            cancel_session,
-            cancel_student_sessions,
-            view_calendar,
-            register_payment,
-            confirm_payment,
-            view_payments,
-            view_payment_status,
-            connect_calendar,
-            configure_group_size_limit,
-            schedule_group_session,
-            enroll_student,
-            remove_student,
-            cancel_group_session,
-            reschedule_group_session,
-        ]
-        
-        # Create agent with system prompt and trainer-specific tools
-        agent = Agent(
-            model=self.model,
-            system_prompt=system_prompt_with_context,
-            tools=tools,
-        )
-        
+        @tool
+        def configure_group_size_limit(limit: int) -> Dict[str, Any]:
+            """Configure the maximum number of students allowed in a group session. Limit must be between 2 and 50."""
+            return group_session_tools.configure_group_size_limit(trainer_id, limit)
+
+        # ── Payment domain inner tools ──────────────────────────────────
+        @tool
+        def register_payment(
+            student_name: str, amount: float, payment_date: str,
+            student_id: str = None, receipt_s3_key: str = None, receipt_media_type: str = None,
+            session_id: str = None, currency: str = "USD",
+            reference_start_month: str = None, reference_end_month: str = None,
+        ) -> Dict[str, Any]:
+            """Register a payment from a student. reference_start_month and reference_end_month define the period covered in YYYY-MM format (e.g. '2024-01' to '2024-03' for 3 months)."""
+            return payment_tools.register_payment(trainer_id, student_name, amount, payment_date, student_id, receipt_s3_key, receipt_media_type, session_id, currency, reference_start_month, reference_end_month)
+
+        @tool
+        def confirm_payment(payment_id: str) -> Dict[str, Any]:
+            """Confirm a payment."""
+            return payment_tools.confirm_payment(trainer_id, payment_id)
+
+        @tool
+        def view_payments(student_name: str = None, status: str = None) -> Dict[str, Any]:
+            """View payment records for the trainer. Can filter by student name and/or status ('pending' or 'confirmed')."""
+            return payment_tools.view_payments(trainer_id, student_name, status)
+
+        @tool
+        def view_payment_status(student_name: str = None, student_id: str = None) -> Dict[str, Any]:
+            """View month-by-month payment status for a student showing which months are paid, pending, or overdue. The student must have a plan configured with monthly_fee and plan_start_date."""
+            return payment_tools.view_payment_status(trainer_id, student_name, student_id)
+
+        # ── Calendar domain inner tools ─────────────────────────────────
+        @tool
+        def connect_calendar(provider: str) -> Dict[str, Any]:
+            """Connect Google Calendar or Outlook Calendar to sync training sessions. IMPORTANT: You MUST call this tool to get the OAuth URL. NEVER invent or construct OAuth URLs yourself."""
+            return calendar_tools.connect_calendar(trainer_id, provider)
+
+        # ── Domain Agent Tool Functions ─────────────────────────────────
+
+        @tool
+        def student_agent(query: str) -> str:
+            """Handle student management queries: register new students, view student list, update student information."""
+            agent = Agent(
+                model=model,
+                system_prompt="""Você é um agente especializado em gerenciamento de alunos para personal trainers no Brasil.
+
+Sua função é EXCLUSIVAMENTE gerenciar alunos:
+- Registrar novos alunos (register_student)
+- Listar alunos cadastrados (view_students)
+- Atualizar informações de alunos (update_student)
+
+REGRAS CRÍTICAS:
+- SEMPRE chame as ferramentas disponíveis para executar ações. NUNCA invente resultados.
+- NUNCA fabrique IDs de alunos, nomes ou qualquer dado.
+- Se faltar informação obrigatória, PERGUNTE ao usuário.
+- Para registrar aluno, você PRECISA de: nome completo, telefone (+5511999999999), email, objetivo de treino e dia de vencimento (1-31).
+- Responda SEMPRE em português brasileiro (PT-BR).
+- Seja claro, objetivo e amigável.""",
+                tools=[register_student, view_students, update_student],
+            )
+            result = agent(query)
+            return str(result)
+
+        @tool
+        def session_agent(query: str) -> str:
+            """Handle session scheduling queries: schedule, reschedule, cancel individual and group training sessions, view calendar, enroll/remove students from group sessions."""
+            agent = Agent(
+                model=model,
+                system_prompt=f"""Você é um agente especializado em agendamento de sessões de treino para personal trainers no Brasil.
+
+Sua função é EXCLUSIVAMENTE gerenciar sessões de treino:
+- Agendar sessões individuais (schedule_session)
+- Agendar sessões recorrentes (schedule_recurring_session)
+- Reagendar sessões (reschedule_session)
+- Cancelar sessões (cancel_session)
+- Cancelar todas as sessões de um aluno (cancel_student_sessions)
+- Visualizar calendário (view_calendar)
+- Agendar sessões em grupo (schedule_group_session)
+- Inscrever alunos em sessão de grupo (enroll_student)
+- Remover alunos de sessão de grupo (remove_student)
+- Cancelar sessão de grupo (cancel_group_session)
+- Reagendar sessão de grupo (reschedule_group_session)
+- Configurar limite de grupo (configure_group_size_limit)
+
+CONTEXTO TEMPORAL ATUAL:
+- Data de hoje: {current_date} ({day_of_week_pt})
+- Data ISO: {current_date_iso}
+- Hora atual: {current_time} (horário de Brasília)
+
+REGRAS CRÍTICAS:
+- SEMPRE chame as ferramentas disponíveis para executar ações. NUNCA invente resultados.
+- NUNCA fabrique IDs de sessão ou qualquer dado.
+- O usuário fornece horários no fuso de Brasília. NUNCA converta para UTC.
+- Passe o horário EXATAMENTE como o usuário informou.
+- "hoje" = {current_date_iso}, "amanhã" = dia seguinte.
+- Formato de data para ferramentas: YYYY-MM-DD. Formato de hora: HH:MM.
+- Se faltar informação obrigatória, PERGUNTE ao usuário.
+- schedule_group_session APENAS cria a sessão vazia. Para inscrever alunos, chame enroll_student SEPARADAMENTE.
+- Para sessões recorrentes sem período especificado, use 12 semanas como padrão.
+- Dias da semana: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo.
+- Responda SEMPRE em português brasileiro (PT-BR).
+- Seja claro, objetivo e amigável.""",
+                tools=[
+                    schedule_session, schedule_recurring_session, reschedule_session,
+                    cancel_session, cancel_student_sessions, view_calendar,
+                    schedule_group_session, enroll_student, remove_student,
+                    cancel_group_session, reschedule_group_session, configure_group_size_limit,
+                ],
+            )
+            result = agent(query)
+            return str(result)
+
+        @tool
+        def payment_agent(query: str) -> str:
+            """Handle payment queries: register payments, confirm payments, view payment records and payment status."""
+            agent = Agent(
+                model=model,
+                system_prompt="""Você é um agente especializado em gerenciamento de pagamentos para personal trainers no Brasil.
+
+Sua função é EXCLUSIVAMENTE gerenciar pagamentos:
+- Registrar pagamentos (register_payment)
+- Confirmar pagamentos (confirm_payment)
+- Visualizar pagamentos (view_payments)
+- Ver status de pagamento mensal (view_payment_status)
+
+REGRAS CRÍTICAS:
+- SEMPRE chame as ferramentas disponíveis para executar ações. NUNCA invente resultados.
+- NUNCA fabrique IDs de pagamento ou qualquer dado.
+- Se faltar informação obrigatória, PERGUNTE ao usuário.
+- Para registrar pagamento, você PRECISA de: nome do aluno, valor, data de pagamento, método.
+- Responda SEMPRE em português brasileiro (PT-BR).
+- Seja claro, objetivo e amigável.""",
+                tools=[register_payment, confirm_payment, view_payments, view_payment_status],
+            )
+            result = agent(query)
+            return str(result)
+
+        @tool
+        def calendar_agent(query: str) -> str:
+            """Handle calendar integration queries: connect Google Calendar or Outlook Calendar for session sync."""
+            agent = Agent(
+                model=model,
+                system_prompt="""Você é um agente especializado em integração de calendário para personal trainers no Brasil.
+
+Sua função é EXCLUSIVAMENTE conectar calendários:
+- Conectar Google Calendar ou Outlook Calendar (connect_calendar)
+
+REGRAS CRÍTICAS:
+- SEMPRE chame a ferramenta connect_calendar para obter a URL de autorização OAuth.
+- NUNCA invente ou construa URLs de OAuth manualmente. SEMPRE use a ferramenta.
+- A URL retornada pela ferramenta contém credenciais e parâmetros de segurança únicos.
+- Inventar uma URL vai causar erro para o usuário.
+- Após receber o resultado da ferramenta, copie a URL EXATA do campo oauth_url.
+- NUNCA modifique, reconstrua ou invente client_id, redirect_uri ou qualquer parâmetro da URL.
+- Formate a URL em uma linha separada para que o WhatsApp a reconheça como link clicável.
+- Responda SEMPRE em português brasileiro (PT-BR).
+- Seja claro, objetivo e amigável.""",
+                tools=[connect_calendar],
+            )
+            result = agent(query)
+            return str(result)
+
         logger.info(
-            "Strands Agent created with context",
+            "Domain agent tools built",
             trainer_id=trainer_id,
-            tool_count=len(tools)
+            agents=["student_agent", "session_agent", "payment_agent", "calendar_agent"]
         )
-        
-        return agent
-    
+
+        return student_agent, session_agent, payment_agent, calendar_agent
+
     def process_message(
         self,
         trainer_id: str,
@@ -474,47 +409,34 @@ IMPORTANTE - Interpretação de Datas e Horários:
         conversation_history: Optional[list] = None
     ) -> Dict[str, Any]:
         """
-        Process a WhatsApp message through the Strands agent.
-        
+        Process a WhatsApp message through the orchestrator agent.
+
         This method:
         1. Validates trainer_id
-        2. Injects trainer_id into tool execution context
-        3. Executes agent with 10-second timeout protection
-        4. Returns natural language response in PT-BR
-        5. Handles errors gracefully with user-friendly messages
-        
+        2. Builds domain agent tools bound to trainer_id
+        3. Creates orchestrator agent with domain agent tools
+        4. Executes with 30-second timeout protection
+        5. Returns natural language response in PT-BR
+        6. Handles errors gracefully with user-friendly messages
+
         Args:
             trainer_id: Trainer identifier for multi-tenancy (required)
             message: User's WhatsApp message in PT-BR (required)
             phone_number: Phone number for logging (optional)
-            
+            conversation_history: Previous conversation messages (optional)
+
         Returns:
-            {
-                'success': bool,
-                'response': str,  # Natural language response in PT-BR
-                'error': str      # Optional error message in PT-BR (only if success=False)
-            }
-            
-        Example:
-            >>> service.process_message(
-            ...     trainer_id='abc123',
-            ...     message='Registrar novo aluno João Silva',
-            ...     phone_number='+5511999999999'
-            ... )
-            {
-                'success': True,
-                'response': 'Aluno João Silva registrado com sucesso! ID: def456'
-            }
+            {'success': bool, 'response': str, 'error': str (optional)}
         """
         start_time = datetime.utcnow()
-        
+
         logger.info(
             "Processing message",
             trainer_id=trainer_id,
             phone_number=phone_number,
             message_length=len(message) if message else 0
         )
-        
+
         try:
             # Validate trainer_id
             if not trainer_id or not isinstance(trainer_id, str) or not trainer_id.strip():
@@ -527,7 +449,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     'success': False,
                     'error': 'Não foi possível processar sua solicitação. Por favor, tente novamente.'
                 }
-            
+
             # Validate message
             if not message or not isinstance(message, str) or not message.strip():
                 logger.warning(
@@ -540,7 +462,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     'success': False,
                     'error': 'Mensagem vazia ou inválida. Por favor, envie uma mensagem válida.'
                 }
-            
+
             # Verify trainer exists - handle DynamoDB errors
             try:
                 trainer = self.db_client.get_trainer(trainer_id)
@@ -556,8 +478,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     }
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-                
-                # Handle DynamoDB throttling
+
                 if error_code == 'ProvisionedThroughputExceededException':
                     logger.error(
                         "DynamoDB throttling error",
@@ -569,8 +490,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
                         'success': False,
                         'error': 'O serviço está temporariamente indisponível devido ao alto volume de requisições. Por favor, tente novamente em alguns instantes.'
                     }
-                
-                # Handle resource not found
                 elif error_code == 'ResourceNotFoundException':
                     logger.error(
                         "DynamoDB resource not found",
@@ -582,8 +501,6 @@ IMPORTANTE - Interpretação de Datas e Horários:
                         'success': False,
                         'error': 'Serviço temporariamente indisponível. Por favor, tente novamente.'
                     }
-                
-                # Handle other DynamoDB errors
                 else:
                     logger.error(
                         "DynamoDB error",
@@ -596,42 +513,71 @@ IMPORTANTE - Interpretação de Datas e Horários:
                         'success': False,
                         'error': 'Serviço temporariamente indisponível. Por favor, tente novamente.'
                     }
-            
-            # Create agent with trainer-specific tools (multi-tenancy enforcement)
-            agent = self._create_agent_for_trainer(trainer_id)
-            
+
+            # Build domain agent tools bound to this trainer_id
+            student_agent, session_agent, payment_agent, calendar_agent = \
+                self._build_domain_agent_tools(trainer_id)
+
+            # Create orchestrator agent with domain agent tools
+            orchestrator_prompt = """Você é um assistente de IA para personal trainers no Brasil via WhatsApp.
+
+Você tem 4 agentes especialistas disponíveis como ferramentas. Encaminhe a solicitação do usuário para o agente correto:
+
+- student_agent: Para QUALQUER assunto sobre alunos (registrar, listar, atualizar alunos)
+- session_agent: Para QUALQUER assunto sobre sessões de treino (agendar, reagendar, cancelar sessões individuais ou em grupo, ver calendário, inscrever/remover alunos de grupos)
+- payment_agent: Para QUALQUER assunto sobre pagamentos (registrar, confirmar, visualizar pagamentos e status)
+- calendar_agent: Para QUALQUER assunto sobre conectar/sincronizar calendário (Google Calendar, Outlook)
+
+REGRAS DE ROTEAMENTO:
+- Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno" → student_agent
+- Palavras como "sessão", "agendar", "reagendar", "cancelar sessão", "calendário", "treino", "horário", "grupo", "inscrever" → session_agent
+- Palavras como "pagamento", "pagar", "valor", "recibo", "mensalidade", "confirmar pagamento" → payment_agent
+- Palavras como "conectar calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
+- Para conversa geral (saudações, perguntas sobre funcionalidades, ajuda) → responda diretamente SEM chamar nenhuma ferramenta
+
+REGRAS CRÍTICAS:
+- Quando encaminhar para um agente, passe a mensagem COMPLETA do usuário como query.
+- NUNCA invente resultados. Sempre use os agentes especialistas para executar ações.
+- Se o usuário confirmar uma ação pendente ("Sim", "Confirmado"), encaminhe para o agente apropriado com contexto.
+- Responda SEMPRE em português brasileiro (PT-BR).
+- Seja claro, objetivo e amigável."""
+
+            orchestrator = Agent(
+                model=self.model,
+                system_prompt=orchestrator_prompt,
+                tools=[student_agent, session_agent, payment_agent, calendar_agent],
+            )
+
             # Inject conversation history if available
             if conversation_history:
-                agent.messages = conversation_history
+                orchestrator.messages = conversation_history
                 logger.info(
                     "Conversation history loaded",
                     trainer_id=trainer_id,
                     history_count=len(conversation_history),
                 )
-            
-            # Execute agent with thread-based timeout (30 seconds)
-            # signal.SIGALRM doesn't interrupt blocking I/O in Lambda,
-            # so we use concurrent.futures for reliable timeout enforcement
+
+            # Execute orchestrator with thread-based timeout (30 seconds)
             from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-            
+
             def _run_agent():
-                return agent(message)
-            
+                return orchestrator(message)
+
             try:
                 bedrock_start_time = datetime.utcnow()
-                
+
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(_run_agent)
                     agent_result = future.result(timeout=30)
-                
+
                 bedrock_execution_time = (datetime.utcnow() - bedrock_start_time).total_seconds()
-                
+
                 logger.info(
                     "Bedrock execution completed",
                     trainer_id=trainer_id,
                     bedrock_time_seconds=bedrock_execution_time
                 )
-                
+
                 # Extract response text from AgentResult object
                 if hasattr(agent_result, 'text'):
                     response_text = agent_result.text
@@ -641,9 +587,9 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     response_text = agent_result
                 else:
                     response_text = str(agent_result)
-                
+
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
-                
+
                 logger.info(
                     "Message processed successfully",
                     trainer_id=trainer_id,
@@ -651,15 +597,15 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     execution_time_seconds=execution_time,
                     response_length=len(response_text)
                 )
-                
+
                 return {
                     'success': True,
                     'response': response_text
                 }
-                
+
             except FuturesTimeoutError:
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
-                
+
                 logger.error(
                     "Agent execution timeout",
                     trainer_id=trainer_id,
@@ -668,18 +614,18 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     execution_time_seconds=execution_time,
                     message_preview=message[:100] if message else None
                 )
-                
+
                 return {
                     'success': False,
                     'error': 'A solicitação demorou muito para processar. Por favor, tente novamente com uma mensagem mais simples.'
                 }
-            
+
             # Handle Bedrock API errors
             except ClientError as e:
-                
+
                 error_code = e.response.get('Error', {}).get('Code', 'Unknown')
                 error_message = e.response.get('Error', {}).get('Message', str(e))
-                
+
                 logger.error(
                     "Bedrock API error",
                     trainer_id=trainer_id,
@@ -687,8 +633,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                     error_code=error_code,
                     error_message=error_message
                 )
-                
-                # Handle specific Bedrock errors
+
                 if error_code in ['ThrottlingException', 'TooManyRequestsException']:
                     return {
                         'success': False,
@@ -714,9 +659,8 @@ IMPORTANTE - Interpretação de Datas e Horários:
                         'success': False,
                         'error': 'O serviço de IA está temporariamente indisponível. Por favor, tente novamente.'
                     }
-            
+
         except ValueError as e:
-            # Validation errors - user-facing
             logger.warning(
                 "Validation error",
                 trainer_id=trainer_id,
@@ -724,8 +668,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 error=str(e),
                 error_type=type(e).__name__
             )
-            
-            # Extract meaningful error message
+
             error_msg = str(e)
             if 'phone' in error_msg.lower():
                 user_error = 'Formato de telefone inválido. Use o formato internacional (ex: +5511999999999).'
@@ -737,14 +680,13 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 user_error = 'Valor de pagamento inválido. O valor deve ser maior que zero.'
             else:
                 user_error = f'Erro de validação: {error_msg}'
-            
+
             return {
                 'success': False,
                 'error': user_error
             }
-        
+
         except KeyError as e:
-            # Missing required field errors
             logger.warning(
                 "Missing required field",
                 trainer_id=trainer_id,
@@ -752,17 +694,16 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 missing_field=str(e),
                 error_type=type(e).__name__
             )
-            
+
             field_name = str(e).strip("'\"")
             return {
                 'success': False,
                 'error': f'Campo obrigatório ausente: {field_name}. Por favor, forneça todas as informações necessárias.'
             }
-        
+
         except ClientError as e:
-            # Catch any remaining ClientError exceptions not caught above
             error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-            
+
             logger.error(
                 "AWS service error",
                 trainer_id=trainer_id,
@@ -771,14 +712,13 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 error_type=type(e).__name__,
                 exc_info=True
             )
-            
+
             return {
                 'success': False,
                 'error': 'Serviço temporariamente indisponível. Por favor, tente novamente.'
             }
-        
+
         except ConnectionError as e:
-            # Network/connection errors
             logger.error(
                 "Connection error",
                 trainer_id=trainer_id,
@@ -787,14 +727,13 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 error_type=type(e).__name__,
                 exc_info=True
             )
-            
+
             return {
                 'success': False,
                 'error': 'Erro de conexão. Por favor, verifique sua conexão e tente novamente.'
             }
-        
+
         except TimeoutError as e:
-            # Timeout errors not caught in the inner try block
             logger.error(
                 "Timeout error",
                 trainer_id=trainer_id,
@@ -802,14 +741,13 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 error=str(e),
                 error_type=type(e).__name__
             )
-            
+
             return {
                 'success': False,
                 'error': 'A solicitação demorou muito para processar. Por favor, tente novamente com uma mensagem mais simples.'
             }
-        
+
         except Exception as e:
-            # Unexpected errors - log details but return generic message
             logger.error(
                 "Unexpected error processing message",
                 trainer_id=trainer_id,
@@ -818,7 +756,7 @@ IMPORTANTE - Interpretação de Datas e Horários:
                 error_type=type(e).__name__,
                 exc_info=True
             )
-            
+
             return {
                 'success': False,
                 'error': 'Ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.'
@@ -828,18 +766,8 @@ IMPORTANTE - Interpretação de Datas e Horários:
 def get_strands_agent_service() -> StrandsAgentService:
     """
     Factory function to create a StrandsAgentService instance.
-    
-    This function provides a convenient way to get a configured service instance
-    with default settings from the application configuration.
-    
+
     Returns:
         StrandsAgentService instance
-        
-    Example:
-        service = get_strands_agent_service()
-        result = service.process_message(
-            trainer_id='abc123',
-            message='Ver meus alunos'
-        )
     """
     return StrandsAgentService()
