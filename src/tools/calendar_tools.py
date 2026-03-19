@@ -120,10 +120,11 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
         # Generate unique state token for OAuth security
         state_token = uuid4().hex
 
-        # Store state token in DynamoDB with 10-minute expiration
-        # This will be validated during the OAuth callback
+        # Store state token in DynamoDB with 30-minute expiration
+        # 30 minutes gives the user enough time to open the link,
+        # log into Google/Outlook, and complete the authorization flow
         now = datetime.utcnow()
-        ttl = int((now + timedelta(minutes=10)).timestamp())
+        ttl = int((now + timedelta(minutes=30)).timestamp())
 
         state_item = {
             "PK": f"OAUTH_STATE#{state_token}",
@@ -177,7 +178,7 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
             "data": {
                 "oauth_url": oauth_url,
                 "provider": provider,
-                "expires_in": 600,  # 10 minutes
+                "expires_in": 1800,  # 30 minutes
             },
             "message": (
                 f"Link de autorização do {provider_name} gerado com sucesso. "

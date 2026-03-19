@@ -490,7 +490,7 @@ class TrainerHandler:
                 return (
                     f"Para conectar seu {provider_name}, clique no link abaixo para autorizar o acesso:\n\n"
                     f"{oauth_url}\n\n"
-                    f"O link expira em 10 minutos. Após autorizar, seu calendário será "
+                    f"O link expira em 30 minutos. Após autorizar, seu calendário será "
                     f"sincronizado automaticamente com suas sessões de treino."
                 )
             else:
