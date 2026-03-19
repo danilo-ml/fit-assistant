@@ -494,6 +494,30 @@ def enroll_student(
                 enrolled_count=len(enrolled_students),
             )
 
+            # Update calendar event with all enrolled student emails
+            if session_data.get("calendar_event_id") and session_data.get("calendar_provider"):
+                all_emails = []
+                for enrolled in enrolled_students:
+                    sid = enrolled.get("student_id")
+                    if sid:
+                        sdata = dynamodb_client.get_student(sid)
+                        if sdata and sdata.get("email"):
+                            all_emails.append(sdata["email"])
+
+                if all_emails:
+                    session_dt = datetime.fromisoformat(session_data["session_datetime"])
+                    calendar_sync_service.update_event(
+                        trainer_id=trainer_id,
+                        session_id=session_id,
+                        calendar_event_id=session_data["calendar_event_id"],
+                        calendar_provider=session_data["calendar_provider"],
+                        student_name="Group Session",
+                        session_datetime=session_dt,
+                        duration_minutes=session_data["duration_minutes"],
+                        location=session_data.get("location"),
+                        attendee_emails=all_emails,
+                    )
+
         return {
             "success": True,
             "data": {
@@ -611,6 +635,29 @@ def remove_student(
         session_data["enrolled_students"] = enrolled_students
         session_data["updated_at"] = datetime.utcnow().isoformat()
         dynamodb_client.put_session(session_data)
+
+        # Update calendar event to remove the student's email
+        if session_data.get("calendar_event_id") and session_data.get("calendar_provider"):
+            remaining_emails = []
+            for enrolled in enrolled_students:
+                sid = enrolled.get("student_id")
+                if sid:
+                    sdata = dynamodb_client.get_student(sid)
+                    if sdata and sdata.get("email"):
+                        remaining_emails.append(sdata["email"])
+
+            session_dt = datetime.fromisoformat(session_data["session_datetime"])
+            calendar_sync_service.update_event(
+                trainer_id=trainer_id,
+                session_id=session_id,
+                calendar_event_id=session_data["calendar_event_id"],
+                calendar_provider=session_data["calendar_provider"],
+                student_name="Group Session",
+                session_datetime=session_dt,
+                duration_minutes=session_data["duration_minutes"],
+                location=session_data.get("location"),
+                attendee_emails=remaining_emails,
+            )
 
         logger.info(
             "Student removed from group session",

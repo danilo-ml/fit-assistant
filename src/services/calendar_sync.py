@@ -473,6 +473,7 @@ class CalendarSyncService:
         duration_minutes: int,
         location: Optional[str] = None,
         student_email: Optional[str] = None,
+        attendee_emails: Optional[list] = None,
     ) -> Optional[Dict[str, str]]:
         """
         Create calendar event for a training session.
@@ -540,17 +541,26 @@ class CalendarSyncService:
                     "description": f"Session ID: {session_id}",
                     "start": {
                         "dateTime": session_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "end": {
                         "dateTime": end_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                 }
                 if location:
                     event_data["location"] = location
+
+                # Build attendees list
+                google_attendees = []
                 if student_email:
-                    event_data["attendees"] = [{"email": student_email}]
+                    google_attendees.append({"email": student_email})
+                if attendee_emails:
+                    for email in attendee_emails:
+                        if not any(a["email"] == email for a in google_attendees):
+                            google_attendees.append({"email": email})
+                if google_attendees:
+                    event_data["attendees"] = google_attendees
 
                 event_id = self._google_create_event(access_token, calendar_id, event_data)
 
@@ -563,22 +573,32 @@ class CalendarSyncService:
                     },
                     "start": {
                         "dateTime": session_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "end": {
                         "dateTime": end_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                 }
                 if location:
                     event_data["location"] = {"displayName": location}
+
+                # Build attendees list
+                outlook_attendees = []
                 if student_email:
-                    event_data["attendees"] = [
-                        {
-                            "emailAddress": {"address": student_email, "name": student_name},
-                            "type": "required",
-                        }
-                    ]
+                    outlook_attendees.append({
+                        "emailAddress": {"address": student_email, "name": student_name},
+                        "type": "required",
+                    })
+                if attendee_emails:
+                    for email in attendee_emails:
+                        if not any(a["emailAddress"]["address"] == email for a in outlook_attendees):
+                            outlook_attendees.append({
+                                "emailAddress": {"address": email, "name": email},
+                                "type": "required",
+                            })
+                if outlook_attendees:
+                    event_data["attendees"] = outlook_attendees
 
                 event_id = self._outlook_create_event(access_token, event_data)
 
@@ -661,11 +681,11 @@ class CalendarSyncService:
                     "description": f"Sessão recorrente - {student_name}",
                     "start": {
                         "dateTime": session_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "end": {
                         "dateTime": end_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "recurrence": [rrule],
                 }
@@ -693,11 +713,11 @@ class CalendarSyncService:
                     },
                     "start": {
                         "dateTime": session_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "end": {
                         "dateTime": end_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "recurrence": {
                         "pattern": {
@@ -757,6 +777,7 @@ class CalendarSyncService:
         duration_minutes: int,
         location: Optional[str] = None,
         student_email: Optional[str] = None,
+        attendee_emails: Optional[list] = None,
     ) -> bool:
         """
         Update calendar event for a rescheduled training session.
@@ -826,17 +847,26 @@ class CalendarSyncService:
                     "description": f"Session ID: {session_id}",
                     "start": {
                         "dateTime": session_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "end": {
                         "dateTime": end_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                 }
                 if location:
                     event_data["location"] = location
+
+                # Build attendees list
+                google_attendees = []
                 if student_email:
-                    event_data["attendees"] = [{"email": student_email}]
+                    google_attendees.append({"email": student_email})
+                if attendee_emails:
+                    for email in attendee_emails:
+                        if not any(a["email"] == email for a in google_attendees):
+                            google_attendees.append({"email": email})
+                if google_attendees:
+                    event_data["attendees"] = google_attendees
 
                 self._google_update_event(
                     access_token, calendar_id, calendar_event_id, event_data
@@ -851,22 +881,32 @@ class CalendarSyncService:
                     },
                     "start": {
                         "dateTime": session_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                     "end": {
                         "dateTime": end_datetime.isoformat(),
-                        "timeZone": "UTC",
+                        "timeZone": "America/Sao_Paulo",
                     },
                 }
                 if location:
                     event_data["location"] = {"displayName": location}
+
+                # Build attendees list
+                outlook_attendees = []
                 if student_email:
-                    event_data["attendees"] = [
-                        {
-                            "emailAddress": {"address": student_email, "name": student_name},
-                            "type": "required",
-                        }
-                    ]
+                    outlook_attendees.append({
+                        "emailAddress": {"address": student_email, "name": student_name},
+                        "type": "required",
+                    })
+                if attendee_emails:
+                    for email in attendee_emails:
+                        if not any(a["emailAddress"]["address"] == email for a in outlook_attendees):
+                            outlook_attendees.append({
+                                "emailAddress": {"address": email, "name": email},
+                                "type": "required",
+                            })
+                if outlook_attendees:
+                    event_data["attendees"] = outlook_attendees
 
                 self._outlook_update_event(access_token, calendar_event_id, event_data)
 

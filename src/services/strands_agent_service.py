@@ -182,6 +182,7 @@ IMPORTANTE - Agendamentos Recorrentes:
 - Quando o usuário disser "recorrente" sem especificar período, use o padrão de 12 semanas
 - Dias da semana aceitos: segunda-feira, terça-feira, quarta-feira, quinta-feira, sexta-feira, sábado, domingo
 - A ferramenta cria múltiplas sessões automaticamente e detecta conflitos
+- Nunca use o horário UTC e nem mostre aos treinadores e alunos. Sempre utilize e se necessário mostrar o horário de Brasilia
 
 IMPORTANTE - Busca de Alunos:
 - Quando o usuário mencionar o NOME de um aluno (ex: "Juliana Nano", "Pedro"), use schedule_session ou schedule_recurring_session diretamente com student_name
@@ -250,19 +251,19 @@ IMPORTANTE - Links e URLs:
 
 CONTEXTO TEMPORAL ATUAL:
 - Data de hoje: {current_date} ({day_of_week_pt})
-- Hora atual: {current_time} (horário de Brasília, UTC-3)
-- Hora atual UTC: {current_datetime_iso}
+- Hora atual: {current_time} (horário de Brasília)
 
 IMPORTANTE - Interpretação de Datas e Horários:
 - O usuário fornece horários no fuso horário de Brasília (UTC-3)
-- As ferramentas esperam horários em UTC
-- SEMPRE adicione 3 horas ao horário fornecido pelo usuário antes de chamar as ferramentas
-- Exemplo: usuário diz "19:00" → use "22:00:00" na ferramenta (19:00 + 3 horas)
-- Exemplo: usuário diz "hoje às 08:00" → use "{current_date}T11:00:00" (08:00 + 3 horas)
+- As ferramentas esperam horários no fuso de Brasília (NÃO converta para UTC)
+- NUNCA adicione 3 horas. Passe o horário EXATAMENTE como o usuário informou
+- Exemplo: usuário diz "15:00" → use "15:00" na ferramenta (sem conversão)
+- Exemplo: usuário diz "hoje às 08:00" → use data de hoje e "08:00" (sem conversão)
 - Quando o usuário mencionar "hoje" = {current_date}
 - Quando o usuário mencionar "amanhã" = dia seguinte a {current_date}
-- Formato de data/hora para ferramentas: YYYY-MM-DDTHH:MM:SS em UTC
-- NUNCA altere datas fornecidas pelo usuário, apenas converta o horário para UTC
+- Formato de data para ferramentas: YYYY-MM-DD
+- Formato de hora para ferramentas: HH:MM
+- NUNCA altere datas ou horários fornecidos pelo usuário
 """
         
         # Create wrapper functions that inject trainer_id
