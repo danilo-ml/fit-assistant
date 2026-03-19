@@ -376,6 +376,27 @@ class TrainerHandler:
             )
             return calendar_response
         
+        # Intercept enroll student requests to avoid AI hallucinating tool calls
+        enroll_response = self._handle_enroll_if_requested(
+            trainer_id, message_text, phone_number, request_id
+        )
+        if enroll_response:
+            self.state_manager.update_state(
+                phone_number=phone_number,
+                state="TRAINER_MENU",
+                user_id=trainer_id,
+                user_type="TRAINER",
+                message={"role": "user", "content": message_text},
+            )
+            self.state_manager.update_state(
+                phone_number=phone_number,
+                state="TRAINER_MENU",
+                user_id=trainer_id,
+                user_type="TRAINER",
+                message={"role": "assistant", "content": enroll_response},
+            )
+            return enroll_response
+        
         # Process message with Strands agent service
         try:
             result = self.agent_service.process_message(
@@ -516,6 +537,156 @@ class TrainerHandler:
                 f"Ocorreu um erro ao tentar conectar seu {provider_name}. "
                 "Por favor, tente novamente em alguns instantes."
             )
+
+    def _handle_enroll_if_requested(
+        self,
+        trainer_id: str,
+        message_text: str,
+        phone_number: str,
+        request_id: str,
+    ) -> Optional[str]:
+        """
+        Detect enroll student requests and handle them directly.
+        
+        This bypasses the AI agent to prevent hallucinated enroll_student calls.
+        Extracts student name from message, finds the most recent group session
+        from conversation history, and calls enroll_student directly.
+        
+        Returns:
+            Formatted response, or None if not an enroll request.
+        """
+        import re
+        text_lower = message_text.lower().strip()
+        
+        # Detect enroll intent
+        enroll_patterns = [
+            r"(?:adicionar|inscrever|incluir|colocar|add)\s+(.+?)\s+(?:na|no|à|a)\s+sess[aã]o",
+            r"(?:adicionar|inscrever|incluir|colocar|add)\s+(.+?)\s+(?:na|no)\s+grupo",
+            r"(?:adicionar|inscrever|incluir|colocar|add)\s+(.+?)\s+(?:na|no)\s+treino\s+(?:em\s+)?grupo",
+        ]
+        
+        student_name = None
+        for pattern in enroll_patterns:
+            match = re.search(pattern, text_lower)
+            if match:
+                student_name = match.group(1).strip()
+                break
+        
+        if not student_name:
+            return None
+        
+        # Capitalize student name properly
+        student_name = " ".join(w.capitalize() for w in student_name.split())
+        
+        logger.info(
+            "Enroll student request intercepted",
+            trainer_id=trainer_id,
+            student_name=student_name,
+            request_id=request_id,
+        )
+        
+        # Find the most recent group session from conversation history
+        session_id = self._find_recent_group_session_id(trainer_id, phone_number)
+        
+        if not session_id:
+            return None  # Let AI handle it if we can't find the session
+        
+        try:
+            from tools.group_session_tools import enroll_student
+            result = enroll_student(trainer_id, session_id, [student_name])
+            
+            if result.get("success"):
+                data = result["data"]
+                results = data.get("results", [])
+                enrolled_count = data.get("enrolled_count", 0)
+                max_participants = data.get("max_participants", 0)
+                remaining = max_participants - enrolled_count
+                
+                # Build response
+                success_names = [r["student_name"] for r in results if r.get("success")]
+                failed = [r for r in results if not r.get("success")]
+                
+                if success_names:
+                    names_str = ", ".join(success_names)
+                    response = (
+                        f"✅ {names_str} foi inscrito(a) na sessão em grupo.\n\n"
+                        f"ID da Sessão: {session_id}\n"
+                        f"Alunos inscritos: {enrolled_count}/{max_participants}\n"
+                        f"Vagas restantes: {remaining}"
+                    )
+                else:
+                    error_msg = failed[0].get("error", "Erro desconhecido") if failed else "Erro desconhecido"
+                    response = f"Não foi possível inscrever {student_name}: {error_msg}"
+                
+                return response
+            else:
+                error = result.get("error", "Erro desconhecido")
+                return f"Não foi possível inscrever {student_name}: {error}"
+                
+        except Exception as e:
+            logger.error(
+                "Enroll student interception error",
+                trainer_id=trainer_id,
+                error=str(e),
+                request_id=request_id,
+            )
+            return None  # Fall back to AI on error
+
+    def _find_recent_group_session_id(
+        self, trainer_id: str, phone_number: str
+    ) -> Optional[str]:
+        """
+        Find the most recent group session ID from conversation history or DynamoDB.
+        
+        Searches conversation history for session IDs mentioned in recent messages,
+        then falls back to finding the most recent scheduled group session in DynamoDB.
+        """
+        import re
+        
+        # First try conversation history
+        try:
+            state = self.state_manager.get_state(phone_number)
+            if state and state.get("history"):
+                # Search recent messages (last 10) for session IDs
+                history = state["history"][-10:]
+                for msg in reversed(history):
+                    content = msg.get("content", "")
+                    # Look for session ID patterns (32-char hex or UUID-like)
+                    id_matches = re.findall(
+                        r"(?:ID da Sess[aã]o|session_id|sessão)[:\s]+([a-f0-9\-]{20,})",
+                        content, re.IGNORECASE
+                    )
+                    if id_matches:
+                        # Verify it's a group session
+                        session_data = self.dynamodb.get_session(trainer_id, id_matches[0])
+                        if session_data and session_data.get("session_type") == "group":
+                            return id_matches[0]
+        except Exception as e:
+            logger.warning(
+                "Failed to search conversation history for session ID",
+                error=str(e),
+            )
+        
+        # Fallback: find most recent scheduled group session from DynamoDB
+        try:
+            sessions = self.dynamodb.get_trainer_sessions(trainer_id)
+            
+            # Filter for scheduled group sessions, sort by created_at
+            group_sessions = [
+                s for s in sessions
+                if s.get("session_type") == "group" and s.get("status") == "scheduled"
+            ]
+            
+            if group_sessions:
+                group_sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+                return group_sessions[0].get("session_id")
+        except Exception as e:
+            logger.warning(
+                "Failed to find group session from DynamoDB",
+                error=str(e),
+            )
+        
+        return None
 
 
 class StudentHandler:
