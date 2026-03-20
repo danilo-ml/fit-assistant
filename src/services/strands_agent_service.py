@@ -371,27 +371,29 @@ REGRAS CRÍTICAS:
         @tool
         def calendar_agent(query: str) -> str:
             """Handle calendar integration queries: connect Google Calendar or Outlook Calendar for session sync."""
-            agent = Agent(
-                model=model,
-                system_prompt="""Você é um agente especializado em integração de calendário para personal trainers no Brasil.
+            # Determine provider from query
+            query_lower = query.lower()
+            if "outlook" in query_lower or "microsoft" in query_lower:
+                provider = "outlook"
+                provider_name = "Outlook Calendar"
+            else:
+                provider = "google"
+                provider_name = "Google Calendar"
 
-Sua função é EXCLUSIVAMENTE conectar calendários:
-- Conectar Google Calendar ou Outlook Calendar (connect_calendar)
+            # Call the tool directly to guarantee the URL is in the response
+            result = connect_calendar(provider)
 
-REGRAS CRÍTICAS:
-- SEMPRE chame a ferramenta connect_calendar para obter a URL de autorização OAuth.
-- NUNCA invente ou construa URLs de OAuth manualmente. SEMPRE use a ferramenta.
-- A URL retornada pela ferramenta contém credenciais e parâmetros de segurança únicos.
-- Inventar uma URL vai causar erro para o usuário.
-- Após receber o resultado da ferramenta, copie a URL EXATA do campo oauth_url e INCLUA NA SUA RESPOSTA.
-- NUNCA modifique, reconstrua ou invente client_id, redirect_uri ou qualquer parâmetro da URL.
-- Sua resposta DEVE conter a URL completa em uma linha separada para que o WhatsApp a reconheça como link clicável. NUNCA omita a URL.
-- Responda SEMPRE em português brasileiro (PT-BR).
-- Seja claro, objetivo e amigável.""",
-                tools=[connect_calendar],
-            )
-            result = agent(query)
-            return str(result)
+            if isinstance(result, dict) and result.get("success"):
+                oauth_url = result["data"]["oauth_url"]
+                return (
+                    f"Para conectar seu {provider_name}, clique no link abaixo para autorizar o acesso:\n\n"
+                    f"{oauth_url}\n\n"
+                    f"O link expira em 30 minutos. Após autorizar, suas sessões serão sincronizadas automaticamente."
+                )
+            elif isinstance(result, dict) and not result.get("success"):
+                return result.get("error", "Não foi possível gerar o link de autorização. Tente novamente.")
+            else:
+                return str(result)
 
         logger.info(
             "Domain agent tools built",
