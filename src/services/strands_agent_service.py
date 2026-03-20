@@ -592,6 +592,25 @@ REGRAS CRÍTICAS:
                 else:
                     response_text = str(agent_result)
 
+                # Fallback: if the orchestrator didn't produce final text but
+                # a tool returned a non-empty result, use the last tool result.
+                # This happens when the LLM treats the tool call as the complete
+                # action and doesn't generate a follow-up message.
+                if not response_text and hasattr(orchestrator, 'messages'):
+                    for msg in reversed(orchestrator.messages):
+                        if msg.get('role') == 'user' and isinstance(msg.get('content'), list):
+                            for block in msg['content']:
+                                if isinstance(block, dict) and block.get('toolResult'):
+                                    tool_content = block['toolResult'].get('content', [])
+                                    for item in tool_content:
+                                        if isinstance(item, dict) and item.get('text'):
+                                            response_text = item['text']
+                                            break
+                                if response_text:
+                                    break
+                        if response_text:
+                            break
+
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
 
                 logger.info(
