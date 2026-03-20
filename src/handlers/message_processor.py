@@ -21,7 +21,7 @@ import lambda_patch  # noqa: F401
 import json
 import time
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import boto3
 from botocore.exceptions import ClientError
 from pydantic import ValidationError
@@ -156,13 +156,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 request_id=request_id,
             )
             
-            # Send response via Twilio
-            _send_response(
-                to=phone_number,
-                body=response_text,
-                request_id=request_id,
-                message_sid=message_sid,
-            )
+            # If _process_message returns None, the message was a confirmation
+            # response already handled — skip sending and history saving.
+            if response_text is not None:
+                # Send response via Twilio
+                _send_response(
+                    to=phone_number,
+                    body=response_text,
+                    request_id=request_id,
+                    message_sid=message_sid,
+                )
             
             # Check processing time
             elapsed_time = time.time() - start_time
@@ -440,7 +443,7 @@ def find_pending_confirmation_session_for_trainer(
 
 def _process_message(
     phone_number: str, message_body: Dict[str, Any], request_id: str
-) -> str:
+) -> Optional[str]:
     """
     Process message by routing to appropriate handler.
 
@@ -459,8 +462,9 @@ def _process_message(
     
     # Check if this is a session confirmation response (YES/NO)
     if process_confirmation_response(phone_number, body_text):
-        # Confirmation was handled, return empty (already sent acknowledgment)
-        return ""
+        # Confirmation was handled, return None sentinel so lambda_handler
+        # knows to skip _send_response AND conversation history saving.
+        return None
     
     logger.info(
         "Routing message",
