@@ -19,7 +19,8 @@ Requirements: 3.1, 3.3, 5.1, 6.4, 7.1, 7.4, 7.6
 """
 
 import os
-from typing import Dict, Any, List, Optional
+import re
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 
 import boto3
@@ -403,6 +404,41 @@ REGRAS CRÍTICAS:
 
         return student_agent, session_agent, payment_agent, calendar_agent
 
+    def _extract_oauth_url_from_messages(self, messages: list) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Scan orchestrator messages for tool results containing OAuth URLs.
+
+        Iterates through the orchestrator's messages list looking for tool results
+        that contain Google or Microsoft OAuth authorization URLs.
+
+        Args:
+            messages: The orchestrator's messages list.
+
+        Returns:
+            Tuple of (oauth_url, full_tool_result_text) if found,
+            or (None, None) if no OAuth URL is present.
+        """
+        oauth_pattern = re.compile(
+            r'(https://accounts\.google\.com/o/oauth2/\S+|https://login\.microsoftonline\.com/\S+)'
+        )
+
+        for msg in messages:
+            if msg.get('role') != 'user' or not isinstance(msg.get('content'), list):
+                continue
+            for block in msg['content']:
+                if not isinstance(block, dict) or not block.get('toolResult'):
+                    continue
+                tool_content = block['toolResult'].get('content', [])
+                for item in tool_content:
+                    if not isinstance(item, dict) or not item.get('text'):
+                        continue
+                    text = item['text']
+                    match = oauth_pattern.search(text)
+                    if match:
+                        return match.group(1), text
+
+        return None, None
+
     def process_message(
         self,
         trainer_id: str,
@@ -610,6 +646,13 @@ REGRAS CRÍTICAS:
                                     break
                         if response_text:
                             break
+
+                # Post-processing: ensure OAuth URLs from calendar_agent are preserved
+                # in the final response. The LLM may paraphrase tool results and drop URLs.
+                if response_text and hasattr(orchestrator, 'messages'):
+                    oauth_url, tool_result_text = self._extract_oauth_url_from_messages(orchestrator.messages)
+                    if oauth_url and oauth_url not in response_text:
+                        response_text = tool_result_text
 
                 execution_time = (datetime.utcnow() - start_time).total_seconds()
 
