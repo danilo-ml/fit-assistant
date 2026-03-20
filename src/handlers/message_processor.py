@@ -341,6 +341,11 @@ def process_confirmation_response(
         )
         
         if not pending_session:
+            logger.warning(
+                "No pending confirmation session found for confirmation keyword",
+                trainer_id=trainer_id,
+                message=message,
+            )
             return False
         
         # Update session based on response
@@ -426,9 +431,22 @@ def find_pending_confirmation_session_for_trainer(
         
         items = response.get('Items', [])
         
+        logger.debug(
+            "Pending confirmation sessions found",
+            trainer_id=trainer_id,
+            pending_count=len(items),
+        )
+        
         if items:
-            items.sort(key=lambda x: x.get('session_datetime', ''))
-            return items[0]
+            items.sort(key=lambda x: x.get('session_datetime', ''), reverse=True)
+            selected = items[0]
+            logger.debug(
+                "Selected pending confirmation session",
+                trainer_id=trainer_id,
+                session_id=selected.get('session_id'),
+                session_datetime=selected.get('session_datetime'),
+            )
+            return selected
         
         return None
     

@@ -52,10 +52,13 @@ def lambda_handler(event, context):
         db_client = DynamoDBClient()
         twilio_client = TwilioClient()
         
-        # Calculate time window: sessions that ended 1 hour ago
+        # Use UTC time here; query_sessions_for_confirmation() handles
+        # the conversion to Brazil local time (UTC-3) internally so that
+        # the time window is compared consistently against session_datetime
+        # values stored as naive local-time datetimes.
         now = datetime.utcnow()
-        check_time_start = now - timedelta(hours=1, minutes=5)  # 1h5m ago
-        check_time_end = now - timedelta(hours=1)  # 1h ago
+        check_time_start = now - timedelta(hours=1, minutes=5)
+        check_time_end = now - timedelta(hours=1)
         
         # Query sessions needing confirmation
         sessions = query_sessions_for_confirmation(
@@ -125,14 +128,25 @@ def query_sessions_for_confirmation(
     - confirmation_status = "scheduled"
     - status != "cancelled"
     
+    Because session_datetime values are stored as naive datetimes in Brazil
+    local time (UTC-3), this function converts the incoming time window from
+    UTC to local time before comparing.  This ensures the comparison is
+    always timezone-consistent regardless of what the caller passes.
+    
     Args:
         db_client: DynamoDB client
-        start_time: Start of time window
-        end_time: End of time window
+        start_time: Start of time window (UTC)
+        end_time: End of time window (UTC)
     
     Returns:
         List of Session objects needing confirmation
     """
+    # Convert UTC time window to Brazil local time (UTC-3) so it matches
+    # the naive local-time session_datetime values stored in DynamoDB.
+    utc_offset = timedelta(hours=3)
+    local_start = start_time - utc_offset
+    local_end = end_time - utc_offset
+
     sessions = []
     
     # Scan table for sessions (in production, optimize with GSI)
@@ -147,13 +161,13 @@ def query_sessions_for_confirmation(
         try:
             session = Session.from_dynamodb(item)
             
-            # Calculate session end time
+            # Calculate session end time (local, same as session_datetime)
             session_end = session.session_datetime + timedelta(
                 minutes=session.duration_minutes
             )
             
-            # Check if session ended in the time window
-            if start_time <= session_end <= end_time:
+            # Compare local session_end against local time window
+            if local_start <= session_end <= local_end:
                 sessions.append(session)
         except Exception as e:
             logger.warning(
@@ -210,8 +224,9 @@ def send_confirmation_request(
         body=message,
     )
     
-    # Update session status
-    now = datetime.utcnow()
+    # Update session status using Brazil local time (UTC-3) for consistency
+    # with session_datetime values stored in local time
+    now = datetime.utcnow() - timedelta(hours=3)
     db_client.update_item(
         pk=f"TRAINER#{session.trainer_id}",
         sk=f"SESSION#{session.session_id}",

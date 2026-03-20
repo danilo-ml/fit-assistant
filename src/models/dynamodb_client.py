@@ -83,6 +83,46 @@ class DynamoDBClient:
         self.table.put_item(Item=serialized_item)
         return item
     
+    def update_item(self, pk: str, sk: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Update specific attributes of an item.
+        
+        Args:
+            pk: Partition key value
+            sk: Sort key value
+            updates: Dict of attribute names to new values
+        
+        Returns:
+            Updated item dict, or None on failure
+        """
+        if not updates:
+            return self.get_item(pk, sk)
+        
+        update_parts = []
+        attr_names = {}
+        attr_values = {}
+        
+        for i, (key, value) in enumerate(updates.items()):
+            placeholder_name = f"#attr{i}"
+            placeholder_value = f":val{i}"
+            update_parts.append(f"{placeholder_name} = {placeholder_value}")
+            attr_names[placeholder_name] = key
+            attr_values[placeholder_value] = value
+        
+        update_expression = "SET " + ", ".join(update_parts)
+        
+        try:
+            response = self.table.update_item(
+                Key={'PK': pk, 'SK': sk},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=attr_names,
+                ExpressionAttributeValues=attr_values,
+                ReturnValues='ALL_NEW',
+            )
+            return self._deserialize_item(response.get('Attributes'))
+        except ClientError:
+            return None
+    
     def delete_item(self, pk: str, sk: str) -> bool:
         """
         Delete an item by primary key.
