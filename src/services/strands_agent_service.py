@@ -383,9 +383,9 @@ REGRAS CRÍTICAS:
 - NUNCA invente ou construa URLs de OAuth manualmente. SEMPRE use a ferramenta.
 - A URL retornada pela ferramenta contém credenciais e parâmetros de segurança únicos.
 - Inventar uma URL vai causar erro para o usuário.
-- Após receber o resultado da ferramenta, copie a URL EXATA do campo oauth_url.
+- Após receber o resultado da ferramenta, copie a URL EXATA do campo oauth_url e INCLUA NA SUA RESPOSTA.
 - NUNCA modifique, reconstrua ou invente client_id, redirect_uri ou qualquer parâmetro da URL.
-- Formate a URL em uma linha separada para que o WhatsApp a reconheça como link clicável.
+- Sua resposta DEVE conter a URL completa em uma linha separada para que o WhatsApp a reconheça como link clicável. NUNCA omita a URL.
 - Responda SEMPRE em português brasileiro (PT-BR).
 - Seja claro, objetivo e amigável.""",
                 tools=[connect_calendar],
@@ -539,6 +539,7 @@ REGRAS CRÍTICAS:
 - Quando encaminhar para um agente, passe a mensagem COMPLETA do usuário como query.
 - NUNCA invente resultados. Sempre use os agentes especialistas para executar ações.
 - Se o usuário confirmar uma ação pendente ("Sim", "Confirmado"), encaminhe para o agente apropriado com contexto.
+- Quando um agente retornar URLs ou links, você DEVE incluir a URL COMPLETA na sua resposta. NUNCA omita links.
 - Responda SEMPRE em português brasileiro (PT-BR).
 - Seja claro, objetivo e amigável."""
 
