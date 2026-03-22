@@ -411,6 +411,85 @@ REGRAS CRÍTICAS:
 
         return student_agent, session_agent, payment_agent, calendar_agent
 
+    def _is_bulk_import_message(self, message: str) -> bool:
+        """Check if a message is a bulk import request.
+
+        Detects structured text prefixes, Google Sheets URLs with import keywords,
+        and CSV-related import keywords. Mirrors the detection logic in ImportParser
+        but avoids instantiating it for a simple check.
+        """
+        lower = message.lower()
+        # Structured text prefix
+        if lower.startswith("importar alunos") or lower.startswith("import students"):
+            return True
+        # Google Sheets URL with import keyword
+        if "docs.google.com/spreadsheets" in message:
+            if "importar" in lower or "import" in lower:
+                return True
+        return False
+
+    def _handle_bulk_import_fast_path(
+        self, trainer_id: str, message: str, phone_number: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Execute bulk import directly, bypassing the LLM agent chain.
+
+        This avoids the orchestrator → student_agent double-LLM round-trip
+        that causes timeouts in production for bulk import operations.
+        """
+        start_time = datetime.utcnow()
+
+        logger.info(
+            "Bulk import fast-path triggered",
+            trainer_id=trainer_id,
+            phone_number=phone_number,
+            message_preview=message[:80] if message else None,
+        )
+
+        try:
+            result = bulk_import_tools.bulk_import_students(
+                trainer_id=trainer_id,
+                message_body=message,
+                media_urls=None,
+            )
+
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+            if result.get("success"):
+                report = result.get("data", {}).get("report", "")
+                logger.info(
+                    "Bulk import fast-path completed",
+                    trainer_id=trainer_id,
+                    phone_number=phone_number,
+                    execution_time_seconds=execution_time,
+                )
+                return {"success": True, "response": report}
+            else:
+                error = result.get("error", "Erro ao importar alunos.")
+                logger.warning(
+                    "Bulk import fast-path returned error",
+                    trainer_id=trainer_id,
+                    phone_number=phone_number,
+                    error=error,
+                    execution_time_seconds=execution_time,
+                )
+                return {"success": False, "error": error}
+
+        except Exception as e:
+            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            logger.error(
+                "Bulk import fast-path exception",
+                trainer_id=trainer_id,
+                phone_number=phone_number,
+                error=str(e),
+                error_type=type(e).__name__,
+                execution_time_seconds=execution_time,
+                exc_info=True,
+            )
+            return {
+                "success": False,
+                "error": "Ocorreu um erro ao importar os alunos. Por favor, tente novamente.",
+            }
+
     def _extract_oauth_url_from_messages(self, messages: list) -> Tuple[Optional[str], Optional[str]]:
         """
         Scan orchestrator messages for tool results containing OAuth URLs.
@@ -558,6 +637,12 @@ REGRAS CRÍTICAS:
                         'success': False,
                         'error': 'Serviço temporariamente indisponível. Por favor, tente novamente.'
                     }
+
+            # Fast-path: detect bulk import messages and call the tool directly,
+            # bypassing the two nested LLM round-trips (orchestrator → student_agent)
+            # that frequently exceed the 30-second timeout in production.
+            if self._is_bulk_import_message(message):
+                return self._handle_bulk_import_fast_path(trainer_id, message, phone_number)
 
             # Build domain agent tools bound to this trainer_id
             student_agent, session_agent, payment_agent, calendar_agent = \
