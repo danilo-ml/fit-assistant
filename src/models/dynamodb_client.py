@@ -571,7 +571,18 @@ class DynamoDBClient:
                 for item in items:
                     batch.put_item(Item=self._serialize_item(item))
             return True
-        except ClientError:
+        except ClientError as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                "batch_write_items failed",
+                exc_info=True,
+                extra={
+                    "error_code": e.response.get("Error", {}).get("Code", "Unknown"),
+                    "error_message": str(e),
+                    "item_count": len(items),
+                },
+            )
             return False
     
     # ==================== Helper Methods ====================

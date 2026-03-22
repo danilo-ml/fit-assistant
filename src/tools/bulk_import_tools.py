@@ -60,6 +60,20 @@ def bulk_import_students(
             'error': str (optional, only present if success=False)
         }
     """
+    return execute_bulk_import(trainer_id, message_body, media_urls)
+
+
+def execute_bulk_import(
+    trainer_id: str,
+    message_body: str,
+    media_urls: list = None,
+) -> Dict[str, Any]:
+    """Core bulk import logic, callable without the @tool decorator.
+
+    This function contains the actual import logic and can be called
+    directly from the fast-path in strands_agent_service without going
+    through the Strands @tool wrapper.
+    """
     if media_urls is None:
         media_urls = []
 

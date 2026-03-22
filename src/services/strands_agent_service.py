@@ -446,13 +446,22 @@ REGRAS CRÍTICAS:
         )
 
         try:
-            result = bulk_import_tools.bulk_import_students(
+            result = bulk_import_tools.execute_bulk_import(
                 trainer_id=trainer_id,
                 message_body=message,
                 media_urls=None,
             )
 
             execution_time = (datetime.utcnow() - start_time).total_seconds()
+
+            logger.info(
+                "Bulk import fast-path raw result",
+                trainer_id=trainer_id,
+                result_keys=list(result.keys()) if isinstance(result, dict) else str(type(result)),
+                success=result.get("success") if isinstance(result, dict) else None,
+                has_error=bool(result.get("error")) if isinstance(result, dict) else None,
+                has_report=bool(result.get("data", {}).get("report")) if isinstance(result, dict) else None,
+            )
 
             if result.get("success"):
                 report = result.get("data", {}).get("report", "")
@@ -464,12 +473,14 @@ REGRAS CRÍTICAS:
                 )
                 return {"success": True, "response": report}
             else:
-                error = result.get("error", "Erro ao importar alunos.")
+                # The tool returns error in "error" key for explicit failures,
+                # but for validation failures the report is in data.report
+                error = result.get("error") or result.get("data", {}).get("report") or "Erro ao importar alunos."
                 logger.warning(
                     "Bulk import fast-path returned error",
                     trainer_id=trainer_id,
                     phone_number=phone_number,
-                    error=error,
+                    error=error[:200],
                     execution_time_seconds=execution_time,
                 )
                 return {"success": False, "error": error}

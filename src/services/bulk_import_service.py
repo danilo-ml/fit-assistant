@@ -12,10 +12,10 @@ from decimal import Decimal
 from enum import Enum
 from typing import Dict, List, Optional, Set, Tuple
 
-from src.models.dynamodb_client import DynamoDBClient
-from src.models.entities import Student, TrainerStudentLink
-from src.services.import_parser import RawStudentRecord
-from src.utils.validation import InputSanitizer, PhoneNumberValidator
+from models.dynamodb_client import DynamoDBClient
+from models.entities import Student, TrainerStudentLink
+from services.import_parser import RawStudentRecord
+from utils.validation import InputSanitizer, PhoneNumberValidator
 
 logger = logging.getLogger(__name__)
 
