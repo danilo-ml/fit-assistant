@@ -28,7 +28,7 @@ from strands import Agent
 from strands.models.bedrock import BedrockModel
 from botocore.exceptions import ClientError
 
-from tools import student_tools, session_tools, payment_tools, calendar_tools, group_session_tools
+from tools import student_tools, session_tools, payment_tools, calendar_tools, group_session_tools, bulk_import_tools
 from models.dynamodb_client import DynamoDBClient
 from utils.logging import get_logger
 from config import settings
@@ -175,6 +175,11 @@ class StrandsAgentService:
             """Update student information. Can identify student by student_name or student_id. monthly_fee is the monthly payment amount in BRL (e.g. 300.00). plan_start_date is the month the plan starts in YYYY-MM format."""
             return student_tools.update_student(trainer_id, student_id, student_name, name, email, phone_number, training_goal, payment_due_day, monthly_fee, plan_start_date)
 
+        @tool
+        def bulk_import_students(message_body: str, media_urls: list = None) -> Dict[str, Any]:
+            """Import multiple students from structured text, CSV file, or Google Sheets link. Use when the trainer wants to register many students at once via text starting with 'importar alunos', a CSV attachment, or a Google Sheets link."""
+            return bulk_import_tools.bulk_import_students(trainer_id, message_body, media_urls)
+
         # ── Session domain inner tools ──────────────────────────────────
         @tool
         def schedule_session(student_name: str, date: str, time: str, duration_minutes: int, location: str = None) -> Dict[str, Any]:
@@ -282,15 +287,17 @@ Sua função é EXCLUSIVAMENTE gerenciar alunos:
 - Registrar novos alunos (register_student)
 - Listar alunos cadastrados (view_students)
 - Atualizar informações de alunos (update_student)
+- Importar múltiplos alunos de uma vez (bulk_import_students)
 
 REGRAS CRÍTICAS:
+- Para importação em massa, use bulk_import_students passando a mensagem completa do usuário como message_body.
 - SEMPRE chame as ferramentas disponíveis para executar ações. NUNCA invente resultados.
 - NUNCA fabrique IDs de alunos, nomes ou qualquer dado.
 - Se faltar informação obrigatória, PERGUNTE ao usuário.
 - Para registrar aluno, você PRECISA de: nome completo, telefone (+5511999999999), email, objetivo de treino e dia de vencimento (1-31).
 - Responda SEMPRE em português brasileiro (PT-BR).
 - Seja claro, objetivo e amigável.""",
-                tools=[register_student, view_students, update_student],
+                tools=[register_student, view_students, update_student, bulk_import_students],
             )
             result = agent(query)
             return str(result)
@@ -399,7 +406,7 @@ REGRAS CRÍTICAS:
         logger.info(
             "Domain agent tools built",
             trainer_id=trainer_id,
-            agents=["student_agent", "session_agent", "payment_agent", "calendar_agent"]
+            agents=["student_agent(+bulk_import_students)", "session_agent", "payment_agent", "calendar_agent"]
         )
 
         return student_agent, session_agent, payment_agent, calendar_agent
@@ -567,7 +574,7 @@ Você tem 4 agentes especialistas disponíveis como ferramentas. Encaminhe a sol
 - calendar_agent: Para QUALQUER assunto sobre conectar/sincronizar calendário (Google Calendar, Outlook)
 
 REGRAS DE ROTEAMENTO:
-- Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno" → student_agent
+- Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno", "importar alunos", "import students", "planilha", "Google Sheets", "CSV" → student_agent
 - Palavras como "sessão", "agendar", "reagendar", "cancelar sessão", "calendário", "treino", "horário", "grupo", "inscrever" → session_agent
 - Palavras como "pagamento", "pagar", "valor", "recibo", "mensalidade", "confirmar pagamento" → payment_agent
 - Palavras como "conectar calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
