@@ -17,9 +17,15 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 import urllib.parse
 
+import requests
+
 from models.dynamodb_client import DynamoDBClient
 from utils.validation import InputSanitizer
+from utils.encryption import decrypt_oauth_token_base64
+from utils.logging import get_logger
 from config import settings
+
+logger = get_logger(__name__)
 
 # Initialize DynamoDB client
 dynamodb_client = DynamoDBClient(
@@ -196,3 +202,194 @@ def connect_calendar(trainer_id: str, provider: str) -> Dict[str, Any]:
             "success": False,
             "error": f"Failed to generate calendar authorization URL: {str(e)}",
         }
+
+
+def disconnect_calendar(trainer_id: str) -> Dict[str, Any]:
+    """
+    Disconnect calendar and revoke OAuth token for a trainer.
+
+    This tool:
+    1. Retrieves the trainer's calendar configuration from DynamoDB
+    2. Decrypts the stored refresh token
+    3. Calls the Google OAuth2 revocation endpoint to revoke the token
+    4. Deletes the calendar configuration from DynamoDB regardless of revocation outcome
+    5. Logs any revocation failures but does not raise exceptions
+
+    Args:
+        trainer_id: Trainer identifier (required)
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {'provider': str, 'disconnected': bool},
+            'error': str (optional, only present if success=False)
+        }
+
+    Examples:
+        >>> disconnect_calendar(trainer_id='abc123')
+        {
+            'success': True,
+            'data': {'provider': 'google', 'disconnected': True}
+        }
+
+    Validates: Requirements 6.1, 6.2, 6.3, 6.4
+    """
+    try:
+        # Retrieve calendar config from DynamoDB
+        config = dynamodb_client.get_calendar_config(trainer_id)
+        if not config:
+            return {
+                "success": False,
+                "error": f"No calendar connected for trainer: {trainer_id}",
+            }
+
+        provider = config.get("provider", "google")
+
+        # Decrypt refresh token
+        encrypted_token = config.get("encrypted_refresh_token", "")
+        refresh_token = decrypt_oauth_token_base64(encrypted_token)
+
+        # Call Google revocation endpoint
+        try:
+            response = requests.post(
+                "https://oauth2.googleapis.com/revoke",
+                params={"token": refresh_token},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=10,
+            )
+            if response.status_code == 200:
+                logger.info(
+                    "Token revoked successfully",
+                    trainer_id=trainer_id,
+                    provider=provider,
+                )
+            else:
+                logger.warning(
+                    "Token revocation returned non-200 status",
+                    trainer_id=trainer_id,
+                    provider=provider,
+                    status_code=response.status_code,
+                )
+        except Exception as e:
+            logger.warning(
+                "Token revocation request failed",
+                trainer_id=trainer_id,
+                provider=provider,
+                error=str(e),
+            )
+
+        # Delete CALENDAR_CONFIG from DynamoDB regardless of revocation outcome
+        dynamodb_client.delete_item(
+            f"TRAINER#{trainer_id}", "CALENDAR_CONFIG"
+        )
+
+        logger.info(
+            "Calendar disconnected",
+            trainer_id=trainer_id,
+            provider=provider,
+        )
+
+        return {
+            "success": True,
+            "data": {"provider": provider, "disconnected": True},
+        }
+
+    except Exception as e:
+        logger.error(
+            "Failed to disconnect calendar",
+            trainer_id=trainer_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return {
+            "success": False,
+            "error": f"Failed to disconnect calendar: {str(e)}",
+        }
+
+def get_calendar_status(trainer_id: str) -> Dict[str, Any]:
+    """
+    Get the current calendar connection status for a trainer.
+
+    This tool:
+    1. Validates that the trainer exists in DynamoDB
+    2. Retrieves the trainer's calendar configuration from DynamoDB
+    3. Returns connection status with provider and connection date if connected
+    4. Returns not-connected status if no calendar configuration exists
+
+    Args:
+        trainer_id: Trainer identifier (required)
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'connected': bool,
+                'provider': str | None,
+                'connected_at': str | None
+            },
+            'error': str (optional, only present if success=False)
+        }
+
+    Examples:
+        >>> get_calendar_status(trainer_id='abc123')  # Connected
+        {
+            'success': True,
+            'data': {
+                'connected': True,
+                'provider': 'google',
+                'connected_at': '2024-01-15T10:30:00'
+            }
+        }
+
+        >>> get_calendar_status(trainer_id='abc123')  # Not connected
+        {
+            'success': True,
+            'data': {
+                'connected': False,
+                'provider': None,
+                'connected_at': None
+            }
+        }
+
+    Validates: Requirements 7.1, 7.2, 7.3
+    """
+    try:
+        # Verify trainer exists
+        trainer = dynamodb_client.get_trainer(trainer_id)
+        if not trainer:
+            return {"success": False, "error": f"Trainer not found: {trainer_id}"}
+
+        # Retrieve calendar config from DynamoDB
+        config = dynamodb_client.get_calendar_config(trainer_id)
+
+        if config:
+            return {
+                "success": True,
+                "data": {
+                    "connected": True,
+                    "provider": config.get("provider"),
+                    "connected_at": config.get("connected_at"),
+                },
+            }
+        else:
+            return {
+                "success": True,
+                "data": {
+                    "connected": False,
+                    "provider": None,
+                    "connected_at": None,
+                },
+            }
+
+    except Exception as e:
+        logger.error(
+            "Failed to get calendar status",
+            trainer_id=trainer_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return {
+            "success": False,
+            "error": f"Failed to get calendar status: {str(e)}",
+        }
+

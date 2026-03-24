@@ -274,6 +274,16 @@ class StrandsAgentService:
             """Connect Google Calendar or Outlook Calendar to sync training sessions. IMPORTANT: You MUST call this tool to get the OAuth URL. NEVER invent or construct OAuth URLs yourself."""
             return calendar_tools.connect_calendar(trainer_id, provider)
 
+        @tool
+        def disconnect_calendar() -> Dict[str, Any]:
+            """Disconnect the trainer's Google Calendar and revoke OAuth access. Use when the trainer wants to stop syncing their calendar."""
+            return calendar_tools.disconnect_calendar(trainer_id)
+
+        @tool
+        def get_calendar_status() -> Dict[str, Any]:
+            """Check whether the trainer's Google Calendar is currently connected. Returns connection status, provider, and connection date."""
+            return calendar_tools.get_calendar_status(trainer_id)
+
         # ── Notification domain inner tools ─────────────────────────────
         @tool
         def send_notification_inner(message: str, recipients: str = "all", specific_student_ids: List[str] = None) -> Dict[str, Any]:
@@ -384,9 +394,39 @@ REGRAS CRÍTICAS:
 
         @tool
         def calendar_agent(query: str) -> str:
-            """Handle calendar integration queries: connect Google Calendar or Outlook Calendar for session sync."""
-            # Determine provider from query
+            """Handle calendar integration queries: connect, disconnect, or check status of Google Calendar or Outlook Calendar for session sync."""
             query_lower = query.lower()
+
+            # Route disconnect requests directly
+            if any(kw in query_lower for kw in ["desconectar", "disconnect", "remover calendário", "revogar"]):
+                result = disconnect_calendar()
+                if isinstance(result, dict) and result.get("success"):
+                    provider = result["data"].get("provider", "google")
+                    provider_name = "Google Calendar" if provider == "google" else "Outlook Calendar"
+                    return f"Seu {provider_name} foi desconectado com sucesso. As sessões não serão mais sincronizadas."
+                elif isinstance(result, dict) and not result.get("success"):
+                    return result.get("error", "Não foi possível desconectar o calendário. Tente novamente.")
+                else:
+                    return str(result)
+
+            # Route status requests directly
+            if any(kw in query_lower for kw in ["status", "conectado", "connected", "verificar calendário"]):
+                result = get_calendar_status()
+                if isinstance(result, dict) and result.get("success"):
+                    data = result["data"]
+                    if data.get("connected"):
+                        provider = data.get("provider", "google")
+                        provider_name = "Google Calendar" if provider == "google" else "Outlook Calendar"
+                        connected_at = data.get("connected_at", "data desconhecida")
+                        return f"Seu {provider_name} está conectado desde {connected_at}."
+                    else:
+                        return "Nenhum calendário está conectado. Use o comando de conectar calendário para sincronizar suas sessões."
+                elif isinstance(result, dict) and not result.get("success"):
+                    return result.get("error", "Não foi possível verificar o status do calendário.")
+                else:
+                    return str(result)
+
+            # Default: connect flow
             if "outlook" in query_lower or "microsoft" in query_lower:
                 provider = "outlook"
                 provider_name = "Outlook Calendar"
@@ -442,7 +482,7 @@ REGRAS CRÍTICAS:
         logger.info(
             "Domain agent tools built",
             trainer_id=trainer_id,
-            agents=["student_agent(+bulk_import_students)", "session_agent", "payment_agent", "calendar_agent", "notification_agent"]
+            agents=["student_agent(+bulk_import_students)", "session_agent", "payment_agent", "calendar_agent(connect+disconnect+status)", "notification_agent"]
         )
 
         return student_agent, session_agent, payment_agent, calendar_agent, notification_agent
@@ -710,7 +750,7 @@ REGRAS DE ROTEAMENTO:
 - Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno", "importar alunos", "import students", "planilha", "Google Sheets", "CSV" → student_agent
 - Palavras como "sessão", "agendar", "reagendar", "cancelar sessão", "calendário", "treino", "horário", "grupo", "inscrever" → session_agent
 - Palavras como "pagamento", "pagar", "valor", "recibo", "mensalidade", "confirmar pagamento" → payment_agent
-- Palavras como "conectar calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
+- Palavras como "conectar calendário", "desconectar calendário", "status calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
 - Palavras como "notificação", "notificar", "avisar", "mensagem para alunos", "enviar mensagem", "broadcast", "avisar alunos" → notification_agent
 - Para conversa geral (saudações, perguntas sobre funcionalidades, ajuda) → responda diretamente SEM chamar nenhuma ferramenta
 
