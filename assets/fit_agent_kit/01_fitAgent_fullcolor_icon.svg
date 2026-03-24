@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 500 500" width="500" height="500">
+  <defs>
+    <!-- Gradients for holographic effect -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00f5ff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#003366" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gearGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="30%" stop-color="#00bcd4"/>
+      <stop offset="60%" stop-color="#0097a7"/>
+      <stop offset="100%" stop-color="#006064"/>
+    </linearGradient>
+    <linearGradient id="gearGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4dd0e1" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#00acc1"/>
+      <stop offset="100%" stop-color="#00838f"/>
+    </linearGradient>
+    <linearGradient id="dumbellGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#80deea"/>
+      <stop offset="40%" stop-color="#26c6da"/>
+      <stop offset="70%" stop-color="#00acc1"/>
+      <stop offset="100%" stop-color="#006064"/>
+    </linearGradient>
+    <linearGradient id="handGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b2ebf2"/>
+      <stop offset="50%" stop-color="#4dd0e1"/>
+      <stop offset="100%" stop-color="#00838f"/>
+    </linearGradient>
+    <linearGradient id="glowLine" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#00e5ff" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="strongGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="innerShadow">
+      <feOffset dx="2" dy="2"/>
+      <feGaussianBlur stdDeviation="3" result="offset-blur"/>
+      <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+      <feFlood flood-color="#003366" flood-opacity="0.5" result="color"/>
+      <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background glow -->
+  <circle cx="250" cy="250" r="220" fill="url(#bgGlow)"/>
+
+  <!-- GEAR - outer ring with teeth -->
+  <g filter="url(#glow)">
+    <!-- Main gear body -->
+    <path d="
+      M 250 60
+      L 270 75 L 285 70 L 295 85 L 285 100
+      A 155 155 0 0 1 340 120
+      L 355 115 L 368 125 L 365 142 L 350 148
+      A 155 155 0 0 1 385 195
+      L 400 198 L 405 213 L 395 225 L 380 222
+      A 155 155 0 0 1 390 250
+      A 155 155 0 0 1 380 278
+      L 395 275 L 405 287 L 400 302 L 385 305
+      A 155 155 0 0 1 350 352
+      L 365 358 L 368 375 L 355 385 L 340 380
+      A 155 155 0 0 1 295 415
+      L 285 430 L 270 425 L 265 408 L 278 398
+      A 155 155 0 0 1 250 405
+      A 155 155 0 0 1 222 398
+      L 235 408 L 230 425 L 215 430 L 205 415
+      A 155 155 0 0 1 160 380
+      L 145 385 L 132 375 L 135 358 L 150 352
+      A 155 155 0 0 1 115 305
+      L 100 302 L 95 287 L 105 275 L 120 278
+      A 155 155 0 0 1 110 250
+      A 155 155 0 0 1 120 222
+      L 105 225 L 95 213 L 100 198 L 115 195
+      A 155 155 0 0 1 150 148
+      L 135 142 L 132 125 L 145 115 L 160 120
+      A 155 155 0 0 1 215 100
+      L 205 85 L 215 70 L 230 75 L 250 60 Z
+    " fill="url(#gearGrad)" stroke="#00e5ff" stroke-width="1.5" opacity="0.95"/>
+
+    <!-- Gear inner ring -->
+    <circle cx="250" cy="250" r="140" fill="none" stroke="#00e5ff" stroke-width="2" opacity="0.6"/>
+    <circle cx="250" cy="250" r="100" fill="#001a2e" opacity="0.7"/>
+
+    <!-- Circuit lines on gear -->
+    <line x1="250" y1="110" x2="250" y2="140" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="320" y1="145" x2="305" y2="165" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="360" y1="210" x2="335" y2="220" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="370" y1="280" x2="345" y2="275" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="320" y1="345" x2="305" y2="330" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="250" y1="390" x2="250" y2="360" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="180" y1="345" x2="195" y2="330" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="130" y1="280" x2="155" y2="275" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="140" y1="210" x2="165" y2="220" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+    <line x1="180" y1="145" x2="195" y2="165" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+
+    <!-- Glowing dots on circuit -->
+    <circle cx="250" cy="140" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="305" cy="165" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="335" cy="220" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="345" cy="275" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="305" cy="330" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="250" cy="360" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="195" cy="330" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="155" cy="275" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="165" cy="220" r="3" fill="#00e5ff" filter="url(#glow)"/>
+    <circle cx="195" cy="165" r="3" fill="#00e5ff" filter="url(#glow)"/>
+  </g>
+
+  <!-- DUMBBELL -->
+  <g filter="url(#glow)">
+    <!-- Left weight plates -->
+    <rect x="95" y="218" width="22" height="64" rx="4" fill="url(#dumbellGrad)" stroke="#00e5ff" stroke-width="1.5"/>
+    <rect x="112" y="210" width="18" height="80" rx="4" fill="url(#dumbellGrad)" stroke="#00e5ff" stroke-width="1.5"/>
+
+    <!-- Bar -->
+    <rect x="130" y="238" width="240" height="24" rx="6" fill="url(#dumbellGrad)" stroke="#00e5ff" stroke-width="1.5"/>
+
+    <!-- Right weight plates -->
+    <rect x="370" y="210" width="18" height="80" rx="4" fill="url(#dumbellGrad)" stroke="#00e5ff" stroke-width="1.5"/>
+    <rect x="383" y="218" width="22" height="64" rx="4" fill="url(#dumbellGrad)" stroke="#00e5ff" stroke-width="1.5"/>
+
+    <!-- Glow on bar -->
+    <rect x="130" y="246" width="240" height="8" rx="3" fill="#00e5ff" opacity="0.3"/>
+  </g>
+
+  <!-- HAND gripping the bar -->
+  <g filter="url(#innerShadow)">
+    <!-- Palm -->
+    <path d="M 195 230 Q 190 220 200 210 Q 215 200 235 205 L 305 205 Q 325 200 340 210 Q 350 220 345 230 L 345 285 Q 348 300 335 310 Q 320 318 300 315 L 200 315 Q 180 312 175 295 Q 170 278 195 270 Z" 
+          fill="url(#handGrad)" stroke="#00acc1" stroke-width="1.5"/>
+
+    <!-- Fingers -->
+    <!-- Index finger -->
+    <path d="M 205 205 Q 200 185 210 170 Q 220 158 232 165 Q 240 172 238 190 L 235 205 Z" 
+          fill="url(#handGrad)" stroke="#00acc1" stroke-width="1.5"/>
+    <!-- Middle finger -->
+    <path d="M 228 203 Q 225 178 235 162 Q 245 150 258 157 Q 267 165 264 185 L 260 203 Z" 
+          fill="url(#handGrad)" stroke="#00acc1" stroke-width="1.5"/>
+    <!-- Ring finger -->
+    <path d="M 253 203 Q 252 180 262 165 Q 272 153 285 160 Q 294 168 290 188 L 285 203 Z" 
+          fill="url(#handGrad)" stroke="#00acc1" stroke-width="1.5"/>
+    <!-- Pinky -->
+    <path d="M 278 205 Q 278 185 288 172 Q 298 163 308 170 Q 315 178 312 195 L 308 205 Z" 
+          fill="url(#handGrad)" stroke="#00acc1" stroke-width="1.5"/>
+    <!-- Thumb -->
+    <path d="M 195 270 Q 175 265 168 250 Q 162 235 175 225 Q 188 218 200 228 Z" 
+          fill="url(#handGrad)" stroke="#00acc1" stroke-width="1.5"/>
+
+    <!-- Knuckle highlights -->
+    <line x1="218" y1="207" x2="218" y2="215" stroke="#80deea" stroke-width="2" opacity="0.7"/>
+    <line x1="244" y1="205" x2="244" y2="213" stroke="#80deea" stroke-width="2" opacity="0.7"/>
+    <line x1="269" y1="205" x2="269" y2="213" stroke="#80deea" stroke-width="2" opacity="0.7"/>
+    <line x1="293" y1="207" x2="293" y2="215" stroke="#80deea" stroke-width="2" opacity="0.7"/>
+
+    <!-- Circuit lines on hand (AI effect) -->
+    <path d="M 220 240 L 240 240 L 250 255 L 280 255 L 290 240 L 310 240" 
+          fill="none" stroke="#00e5ff" stroke-width="1" opacity="0.6"/>
+    <circle cx="250" cy="255" r="3" fill="#00e5ff" opacity="0.8"/>
+    <path d="M 200 270 L 220 265 L 240 275 L 260 265 L 280 275 L 300 265 L 320 270" 
+          fill="none" stroke="#00e5ff" stroke-width="1" opacity="0.5"/>
+  </g>
+
+  <!-- Holographic sparkles / particles -->
+  <g filter="url(#strongGlow)" opacity="0.8">
+    <circle cx="160" cy="180" r="3" fill="#00e5ff"/>
+    <circle cx="340" cy="175" r="2" fill="#80deea"/>
+    <circle cx="380" cy="240" r="2.5" fill="#00e5ff"/>
+    <circle cx="120" cy="300" r="2" fill="#4dd0e1"/>
+    <circle cx="390" cy="310" r="2" fill="#00e5ff"/>
+    <circle cx="200" cy="380" r="2.5" fill="#80deea"/>
+    <circle cx="310" cy="375" r="2" fill="#00e5ff"/>
+    <circle cx="145" cy="200" r="1.5" fill="#00e5ff"/>
+    <circle cx="355" cy="195" r="1.5" fill="#4dd0e1"/>
+  </g>
+
+  <!-- Geometric network lines (holographic) -->
+  <g opacity="0.3" stroke="#00e5ff" stroke-width="0.8">
+    <line x1="160" y1="180" x2="200" y2="210"/>
+    <line x1="340" y1="175" x2="300" y2="210"/>
+    <line x1="380" y1="240" x2="345" y2="250"/>
+    <line x1="120" y1="300" x2="155" y2="280"/>
+    <line x1="390" y1="310" x2="355" y2="290"/>
+    <line x1="200" y1="380" x2="220" y2="345"/>
+    <line x1="310" y1="375" x2="290" y2="345"/>
+  </g>
+
+  <!-- Top highlight on gear -->
+  <path d="M 250 65 A 185 185 0 0 1 390 185" fill="none" stroke="#80deea" stroke-width="3" opacity="0.4" stroke-linecap="round"/>
+</svg>

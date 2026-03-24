@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <defs>
+    <style>
+      .dark-stroke { fill: none; stroke: #1a3a4a; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <!-- GEAR outline dark version -->
+  <path class="dark-stroke" d="
+    M 250 68
+    L 268 82 L 282 77 L 292 93 L 280 108
+    A 150 150 0 0 1 335 128
+    L 350 122 L 363 133 L 360 150 L 344 156
+    A 150 150 0 0 1 378 200
+    L 393 204 L 398 218 L 388 230 L 372 226
+    A 150 150 0 0 1 382 250
+    A 150 150 0 0 1 372 274
+    L 388 270 L 398 282 L 393 296 L 378 300
+    A 150 150 0 0 1 344 344
+    L 360 350 L 363 367 L 350 378 L 335 372
+    A 150 150 0 0 1 280 392
+    L 292 407 L 282 423 L 268 418 L 250 432
+    L 232 418 L 218 423 L 208 407 L 220 392
+    A 150 150 0 0 1 165 372
+    L 150 378 L 137 367 L 140 350 L 156 344
+    A 150 150 0 0 1 122 300
+    L 107 296 L 102 282 L 112 270 L 128 274
+    A 150 150 0 0 1 118 250
+    A 150 150 0 0 1 128 226
+    L 112 230 L 102 218 L 107 204 L 122 200
+    A 150 150 0 0 1 156 156
+    L 140 150 L 137 133 L 150 122 L 165 128
+    A 150 150 0 0 1 220 108
+    L 208 93 L 218 77 L 232 82 L 250 68 Z
+  "/>
+
+  <!-- Inner gear ring -->
+  <circle class="dark-stroke" cx="250" cy="250" r="108" stroke-width="4"/>
+
+  <!-- DUMBBELL dark outline -->
+  <rect class="dark-stroke" x="92" y="215" width="24" height="70" rx="5"/>
+  <rect class="dark-stroke" x="110" y="207" width="20" height="86" rx="5"/>
+  <rect class="dark-stroke" x="130" y="237" width="240" height="26" rx="7"/>
+  <rect class="dark-stroke" x="370" y="207" width="20" height="86" rx="5"/>
+  <rect class="dark-stroke" x="384" y="215" width="24" height="70" rx="5"/>
+
+  <!-- HAND dark outline -->
+  <path class="dark-stroke" d="
+    M 198 232 
+    Q 192 218 204 208 
+    Q 218 198 236 204 
+    L 304 204 
+    Q 322 198 336 208 
+    Q 348 218 342 232 
+    L 342 288 
+    Q 345 305 330 314 
+    Q 314 320 294 317 
+    L 198 317 
+    Q 178 314 172 296 
+    Q 166 278 192 268 Z
+  "/>
+  <path class="dark-stroke" d="M 208 204 Q 202 182 213 167 Q 224 155 237 162 Q 246 170 243 190 L 240 204"/>
+  <path class="dark-stroke" d="M 232 202 Q 228 176 239 160 Q 250 148 263 156 Q 272 164 268 186 L 264 202"/>
+  <path class="dark-stroke" d="M 256 202 Q 254 178 265 163 Q 276 151 289 158 Q 298 167 294 188 L 290 202"/>
+  <path class="dark-stroke" d="M 280 204 Q 280 184 291 171 Q 302 162 312 169 Q 320 178 316 196 L 312 204"/>
+  <path class="dark-stroke" d="M 192 268 Q 170 262 164 246 Q 158 230 172 220 Q 186 212 198 224"/>
+
+  <!-- Knuckle lines -->
+  <line class="dark-stroke" x1="222" y1="206" x2="222" y2="216" stroke-width="3"/>
+  <line class="dark-stroke" x1="248" y1="204" x2="248" y2="214" stroke-width="3"/>
+  <line class="dark-stroke" x1="273" y1="204" x2="273" y2="214" stroke-width="3"/>
+  <line class="dark-stroke" x1="296" y1="206" x2="296" y2="216" stroke-width="3"/>
+</svg>

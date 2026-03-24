@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 140" width="520" height="140">
+  <!-- FIT AGENT wordmark with subtitle -->
+
+  <!-- FIT AGENT main text -->
+  <text x="10" y="75" 
+        font-family="Arial Black, Arial, sans-serif" 
+        font-weight="900" 
+        font-size="68" 
+        fill="#1a3a4a"
+        letter-spacing="2">FIT AGENT</text>
+
+  <!-- Divider line -->
+  <line x1="10" y1="90" x2="510" y2="90" stroke="#00acc1" stroke-width="2.5"/>
+
+  <!-- Subtitle line 1 -->
+  <text x="10" y="115" 
+        font-family="Arial, sans-serif" 
+        font-weight="400" 
+        font-size="17" 
+        fill="#1a5f7a"
+        letter-spacing="4">AI VIRTUAL ASSISTANT FOR PERSONAL TRAINERS</text>
+</svg>

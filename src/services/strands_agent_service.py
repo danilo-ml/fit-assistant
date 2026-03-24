@@ -740,7 +740,7 @@ REGRAS CRÍTICAS:
 
 Você tem 5 agentes especialistas disponíveis como ferramentas. Encaminhe a solicitação do usuário para o agente correto:
 
-- student_agent: Para QUALQUER assunto sobre alunos (registrar, listar, atualizar alunos)
+- student_agent: Para QUALQUER assunto sobre alunos (registrar, listar, atualizar alunos, alterar vencimento/dia de pagamento)
 - session_agent: Para QUALQUER assunto sobre sessões de treino (agendar, reagendar, cancelar sessões individuais ou em grupo, ver calendário, inscrever/remover alunos de grupos)
 - payment_agent: Para QUALQUER assunto sobre pagamentos (registrar, confirmar, visualizar pagamentos e status)
 - calendar_agent: Para QUALQUER assunto sobre conectar/sincronizar calendário (Google Calendar, Outlook)
@@ -748,11 +748,15 @@ Você tem 5 agentes especialistas disponíveis como ferramentas. Encaminhe a sol
 
 REGRAS DE ROTEAMENTO:
 - Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno", "importar alunos", "import students", "planilha", "Google Sheets", "CSV" → student_agent
+- Palavras como "vencimento", "dia de vencimento", "dia do pagamento" combinadas com ações de alteração ("alterar", "mudar", "trocar", "atualizar") → student_agent (pois payment_due_day é um dado cadastral do aluno)
 - Palavras como "sessão", "agendar", "reagendar", "cancelar sessão", "calendário", "treino", "horário", "grupo", "inscrever" → session_agent
-- Palavras como "pagamento", "pagar", "valor", "recibo", "mensalidade", "confirmar pagamento" → payment_agent
+- Palavras como "pagamento", "pagar", "valor", "recibo", "confirmar pagamento" → payment_agent
+- "mensalidade" → payment_agent APENAS para registrar/visualizar/confirmar pagamentos, NÃO para alterar vencimento
 - Palavras como "conectar calendário", "desconectar calendário", "status calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
 - Palavras como "notificação", "notificar", "avisar", "mensagem para alunos", "enviar mensagem", "broadcast", "avisar alunos" → notification_agent
 - Para conversa geral (saudações, perguntas sobre funcionalidades, ajuda) → responda diretamente SEM chamar nenhuma ferramenta
+
+REGRA DE DESAMBIGUAÇÃO: Se a mensagem contém "vencimento" ou "dia de vencimento" ou "dia do pagamento" junto com ação de alteração ("alterar", "mudar", "trocar", "atualizar"), SEMPRE encaminhe para student_agent, mesmo que contenha "mensalidade". O campo payment_due_day é um atributo do cadastro do aluno, não uma operação de pagamento.
 
 REGRAS CRÍTICAS:
 - Quando encaminhar para um agente, passe a mensagem COMPLETA do usuário como query.

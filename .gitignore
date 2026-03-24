@@ -91,4 +91,3 @@ COMMIT_MESSAGE.txt
 # Infrastructure Parameters (contain secrets)
 infrastructure/parameters/*.json
 !infrastructure/parameters/*.example.json
-assets/

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitAgent - Assistente Inteligente para Personal Trainers</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #fafafa;
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 0 1.5rem; }
+        header {
+            background-color: #1a1a2e;
+            color: #fff;
+            padding: 1rem 0;
+        }
+        header .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        header .logo { font-size: 1.5rem; font-weight: 700; text-decoration: none; color: #fff; }
+        header nav a {
+            color: #ccc;
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: color 0.2s;
+        }
+        header nav a:hover { color: #fff; }
+        main { padding: 2rem 0 3rem; }
+        main .container h1 { font-size: 1.75rem; margin-bottom: 0.5rem; color: #1a1a2e; }
+        main .container .updated { font-size: 0.85rem; color: #777; margin-bottom: 2rem; }
+        main .container h2 { font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.75rem; color: #1a1a2e; }
+        main .container p, main .container ul { margin-bottom: 1rem; }
+        main .container ul { padding-left: 1.5rem; }
+        main .container li { margin-bottom: 0.4rem; }
+        footer {
+            background-color: #1a1a2e;
+            color: #aaa;
+            padding: 1.5rem 0;
+            font-size: 0.85rem;
+        }
+        footer .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        footer a { color: #ccc; text-decoration: none; }
+        footer a:hover { color: #fff; }
+        @media (max-width: 600px) {
+            header .container { flex-direction: column; text-align: center; }
+            footer .container { flex-direction: column; text-align: center; }
+            main .container h1 { font-size: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <span class="logo">FitAgent</span>
+            <nav>
+                <a href="privacidade.html">Política de Privacidade</a> &middot;
+                <a href="termos.html">Termos de Serviço</a>
+            </nav>
+        </div>
+    </header>
+    <main>
+        <div class="container">
+            <h1>FitAgent</h1>
+            <p>Seu assistente inteligente para gestão de personal trainers via WhatsApp.</p>
+
+            <h2>O que é o FitAgent?</h2>
+            <p>O FitAgent é uma plataforma que permite a personal trainers gerenciar todo o seu negócio através de conversas no WhatsApp. Com o auxílio de inteligência artificial, você organiza alunos, agenda sessões de treino, acompanha pagamentos e envia notificações — tudo sem sair do WhatsApp.</p>
+
+            <h2>Funcionalidades</h2>
+            <ul>
+                <li>Cadastro e gerenciamento de alunos.</li>
+                <li>Agendamento e controle de sessões de treino.</li>
+                <li>Registro e acompanhamento de pagamentos.</li>
+                <li>Sincronização com Google Calendar e Microsoft Outlook.</li>
+                <li>Lembretes e notificações automáticas para alunos.</li>
+                <li>Interface conversacional com inteligência artificial.</li>
+            </ul>
+
+            <h2>Como funciona?</h2>
+            <p>Basta enviar uma mensagem para o nosso número no WhatsApp. O assistente de IA do FitAgent entende suas solicitações em linguagem natural e executa as ações necessárias — desde agendar um treino até registrar um pagamento.</p>
+            <p>Seus alunos também podem interagir pelo WhatsApp para consultar horários e receber lembretes de sessões e pagamentos.</p>
+        </div>
+    </main>
+    <footer>
+        <div class="container">
+            <span>&copy; 2026 FitAgent. Todos os direitos reservados.</span>
+            <nav>
+                <a href="privacidade.html">Política de Privacidade</a> &middot;
+                <a href="termos.html">Termos de Serviço</a>
+            </nav>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,108 +1,1715 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FitAgent - Assistente Inteligente para Personal Trainers</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FitAssist AI — Seu Assistente Inteligente no WhatsApp</title>
+    <meta name="description" content="Agente de IA no WhatsApp para personal trainers. Organize alunos, agende treinos, controle pagamentos — tudo por mensagem." />
+
+    <!-- Fonts: Inter + JetBrains Mono (matching design system) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+    <!-- GSAP + ScrollTrigger + SplitText (premium animation stack) -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+    <!-- Lenis for buttery smooth scrolling -->
+    <script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+
+    <!-- Iconify for Solar Bold Duotone icons (matching design system) -->
+    <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
+
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        /* ============================================
+           CSS CUSTOM PROPERTIES — Design System Tokens
+           ============================================ */
+        :root {
+            --surface: #EAEAE5;
+            --obsidian: #1C1C1C;
+            --white: #FFFFFF;
+            --stone-100: #F5F5F4;
+            --stone-200: #E7E5E4;
+            --stone-300: #D6D3D1;
+            --stone-400: #A8A29E;
+            --stone-500: #78716C;
+            --stone-600: #57534E;
+            --accent-blue: #2563EB;
+            --success: #22C55E;
+            --whatsapp: #25D366;
+
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+
+        /* ============================================
+           RESET & BASE
+           ============================================ */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            scroll-behavior: auto; /* Lenis handles smooth scroll */
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: var(--font-sans);
+            background-color: var(--obsidian);
+            color: var(--white);
+            overflow-x: hidden;
             line-height: 1.6;
-            color: #333;
-            background-color: #fafafa;
         }
-        .container { max-width: 800px; margin: 0 auto; padding: 0 1.5rem; }
-        header {
-            background-color: #1a1a2e;
-            color: #fff;
-            padding: 1rem 0;
+
+        ::selection {
+            background: var(--whatsapp);
+            color: var(--obsidian);
         }
-        header .container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
+
+        img, video {
+            display: block;
+            max-width: 100%;
         }
-        header .logo { font-size: 1.5rem; font-weight: 700; text-decoration: none; color: #fff; }
-        header nav a {
-            color: #ccc;
+
+        a {
+            color: inherit;
             text-decoration: none;
-            font-size: 0.95rem;
-            transition: color 0.2s;
         }
-        header nav a:hover { color: #fff; }
-        main { padding: 2rem 0 3rem; }
-        main .container h1 { font-size: 1.75rem; margin-bottom: 0.5rem; color: #1a1a2e; }
-        main .container .updated { font-size: 0.85rem; color: #777; margin-bottom: 2rem; }
-        main .container h2 { font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.75rem; color: #1a1a2e; }
-        main .container p, main .container ul { margin-bottom: 1rem; }
-        main .container ul { padding-left: 1.5rem; }
-        main .container li { margin-bottom: 0.4rem; }
-        footer {
-            background-color: #1a1a2e;
-            color: #aaa;
-            padding: 1.5rem 0;
-            font-size: 0.85rem;
+
+        button {
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            background: none;
         }
-        footer .container {
+
+        /* ============================================
+           NAVIGATION
+           ============================================ */
+        .nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 1.25rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.5s var(--ease-smooth);
+        }
+
+        .nav.scrolled {
+            background: rgba(28, 28, 28, 0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 0.875rem 2rem;
+        }
+
+        .nav__logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 700;
+            font-size: 1.125rem;
+            letter-spacing: -0.02em;
+        }
+
+        .nav__logo iconify-icon {
+            font-size: 1.5rem;
+            color: var(--whatsapp);
+        }
+
+        .nav__links {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav__links a {
+            font-size: 0.8125rem;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--stone-400);
+            transition: color 0.3s;
+        }
+
+        .nav__links a:hover {
+            color: var(--white);
+        }
+
+        .nav__cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.625rem 1.5rem;
+            background: var(--whatsapp);
+            color: var(--obsidian);
+            font-size: 0.8125rem;
+            font-weight: 600;
+            border-radius: 100px;
+            letter-spacing: 0.02em;
+            transition: all 0.3s var(--ease-smooth);
+        }
+
+        .nav__cta:hover {
+            background: #1ebe5d;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 30px rgba(37, 211, 102, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .nav__links { display: none; }
+            .nav { padding: 1rem 1.25rem; }
+        }
+
+        /* ============================================
+           HERO SECTION
+           ============================================ */
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* Hero background — subtle grain texture, no video */
+        .hero__bg-grain {
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+            z-index: 1;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        .hero__content {
+            position: relative;
+            z-index: 10;
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 8rem 2rem 4rem;
+            width: 100%;
+        }
+
+        .hero__badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 1rem 0.375rem 0.5rem;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+            color: var(--stone-300);
+            margin-bottom: 2rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .hero__badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--whatsapp);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.4); }
+            50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(37, 211, 102, 0); }
+        }
+
+        .hero__title {
+            font-size: clamp(2.75rem, 7vw, 5.5rem);
+            font-weight: 600;
+            line-height: 1.02;
+            letter-spacing: -0.04em;
+            margin-bottom: 1.5rem;
+            max-width: 900px;
+        }
+
+        .hero__title-line {
+            display: block;
+            overflow: hidden;
+        }
+
+        .hero__title-text {
+            display: block;
+            will-change: transform;
+        }
+
+        .hero__title .accent {
+            color: var(--whatsapp);
+        }
+
+        .hero__title .outline-text {
+            color: transparent;
+            -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.35);
+        }
+
+        .hero__subtitle {
+            font-size: clamp(1rem, 1.5vw, 1.25rem);
+            font-weight: 300;
+            line-height: 1.7;
+            color: var(--stone-400);
+            max-width: 560px;
+            margin-bottom: 2.5rem;
+        }
+
+        .hero__actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
             flex-wrap: wrap;
+        }
+
+        /* Primary CTA Button */
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.625rem;
+            padding: 0.875rem 2rem;
+            background: var(--whatsapp);
+            color: var(--obsidian);
+            font-size: 0.9375rem;
+            font-weight: 600;
+            border-radius: 100px;
+            letter-spacing: 0.01em;
+            transition: all 0.4s var(--ease-out-expo);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transform: skewX(-20deg);
+            transition: left 0.6s;
+        }
+
+        .btn-primary:hover::before {
+            left: 150%;
+        }
+
+        .btn-primary:hover {
+            background: #1ebe5d;
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(37, 211, 102, 0.35);
+        }
+
+        .btn-primary iconify-icon {
+            font-size: 1.25rem;
+            transition: transform 0.3s var(--ease-out-expo);
+        }
+
+        .btn-primary:hover iconify-icon {
+            transform: translateX(3px);
+        }
+
+        /* Secondary CTA Button */
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.75rem;
+            background: transparent;
+            color: var(--white);
+            font-size: 0.9375rem;
+            font-weight: 500;
+            border-radius: 100px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.4s var(--ease-out-expo);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* ============================================
+           FLOATING CARDS (Hero right side)
+           ============================================ */
+        .hero__cards {
+            position: absolute;
+            right: 2rem;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-width: 340px;
+            width: 100%;
+        }
+
+        .float-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(24px) saturate(150%);
+            -webkit-backdrop-filter: blur(24px) saturate(150%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 1.125rem 1.25rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.875rem;
+            will-change: transform;
+            transition: all 0.4s var(--ease-out-expo);
+        }
+
+        .float-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.14);
+            transform: translateY(-2px) scale(1.01);
+        }
+
+        .float-card__icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 1.25rem;
+        }
+
+        .float-card__icon--green {
+            background: rgba(34, 197, 94, 0.15);
+            color: var(--success);
+        }
+
+        .float-card__icon--blue {
+            background: rgba(37, 99, 235, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .float-card__icon--whatsapp {
+            background: rgba(37, 211, 102, 0.15);
+            color: var(--whatsapp);
+        }
+
+        .float-card__icon--amber {
+            background: rgba(245, 158, 11, 0.15);
+            color: #F59E0B;
+        }
+
+        .float-card__meta {
+            font-family: var(--font-mono);
+            font-size: 0.625rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--stone-500);
+            margin-bottom: 0.25rem;
+        }
+
+        .float-card__text {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--white);
+            line-height: 1.4;
+        }
+
+        .float-card__time {
+            font-family: var(--font-mono);
+            font-size: 0.625rem;
+            color: var(--stone-500);
+            margin-top: 0.375rem;
+        }
+
+        @media (max-width: 1100px) {
+            .hero__cards {
+                position: relative;
+                right: auto;
+                top: auto;
+                transform: none;
+                max-width: 100%;
+                flex-direction: row;
+                overflow-x: auto;
+                padding: 0 2rem 2rem;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            .hero__cards::-webkit-scrollbar { display: none; }
+            .float-card { min-width: 280px; flex-shrink: 0; }
+        }
+
+        /* ============================================
+           STATS MARQUEE
+           ============================================ */
+        .marquee-section {
+            position: relative;
+            z-index: 10;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 1.25rem 0;
+            overflow: hidden;
+            background: rgba(28, 28, 28, 0.6);
+            backdrop-filter: blur(10px);
+        }
+
+        .marquee-track {
+            display: flex;
+            animation: marquee-scroll 35s linear infinite;
+            width: max-content;
+        }
+
+        .marquee-track:hover {
+            animation-play-state: paused;
+        }
+
+        .marquee-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0 2.5rem;
+            white-space: nowrap;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--stone-500);
+        }
+
+        .marquee-item iconify-icon {
+            font-size: 1rem;
+            color: var(--stone-400);
+        }
+
+        .marquee-dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--stone-600);
+            flex-shrink: 0;
+        }
+
+        @keyframes marquee-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        /* ============================================
+           VIDEO SCROLL SECTION — Fullscreen seamless
+           Edge-to-edge video with gradient blending
+           into the obsidian background. No container.
+           ============================================ */
+        .video-section {
+            position: relative;
+            z-index: 10;
+            height: 150vh; /* Short scroll distance — snappy transitions */
+        }
+
+        .video-section__sticky {
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: var(--obsidian);
+        }
+
+        .video-section__player {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            will-change: transform, opacity;
+        }
+
+        .video-section__video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Top gradient: blends from obsidian into video */
+        .video-section__fade-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 25%;
+            background: linear-gradient(180deg, var(--obsidian) 0%, transparent 100%);
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* Bottom gradient: blends from video back to obsidian */
+        .video-section__fade-bottom {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 30%;
+            background: linear-gradient(0deg, var(--obsidian) 0%, transparent 100%);
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* Subtle grain overlay on video */
+        .video-section__grain {
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+            z-index: 3;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+
+        .video-section__caption {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 3rem 2rem 2rem;
+            z-index: 4;
+            text-align: center;
+        }
+
+        .video-section__caption p {
+            font-size: 0.8125rem;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--stone-400);
+        }
+
+        /* ============================================
+           FEATURES SECTION
+           ============================================ */
+        .features {
+            position: relative;
+            z-index: 10;
+            padding: 8rem 2rem;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .features__header {
+            text-align: center;
+            margin-bottom: 5rem;
+        }
+
+        .features__label {
+            font-family: var(--font-mono);
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--stone-500);
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .features__title {
+            font-size: clamp(2rem, 4vw, 3.25rem);
+            font-weight: 600;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 1rem;
+        }
+
+        .features__desc {
+            font-size: 1.0625rem;
+            font-weight: 300;
+            color: var(--stone-400);
+            max-width: 520px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+
+        .features__grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .feature-card {
+            background: rgba(28, 28, 28, 0.8);
+            padding: 2.5rem 2rem;
+            transition: all 0.5s var(--ease-out-expo);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(
+                600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+                rgba(255, 255, 255, 0.03),
+                transparent 40%
+            );
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feature-card:hover {
+            background: rgba(40, 40, 40, 0.9);
+        }
+
+        .feature-card__icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: all 0.4s var(--ease-out-expo);
+        }
+
+        .feature-card:hover .feature-card__icon {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .feature-card__title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin-bottom: 0.625rem;
+        }
+
+        .feature-card__text {
+            font-size: 0.875rem;
+            color: var(--stone-400);
+            line-height: 1.65;
+            font-weight: 300;
+        }
+
+        @media (max-width: 900px) {
+            .features__grid { grid-template-columns: 1fr; }
+        }
+
+        @media (min-width: 901px) and (max-width: 1100px) {
+            .features__grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        /* ============================================
+           CHAT DEMO SECTION
+           ============================================ */
+        .chat-demo {
+            position: relative;
+            z-index: 10;
+            padding: 6rem 2rem 8rem;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .chat-demo__layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .chat-demo__info {
+            max-width: 480px;
+        }
+
+        .chat-demo__phone {
+            position: relative;
+            display: flex;
+            justify-content: center;
+        }
+
+        .phone-frame {
+            width: 320px;
+            background: var(--obsidian);
+            border-radius: 36px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+            box-shadow:
+                0 0 0 1px rgba(255, 255, 255, 0.04),
+                0 40px 100px -20px rgba(0, 0, 0, 0.7),
+                0 0 80px -10px rgba(37, 211, 102, 0.06);
+        }
+
+        .phone-frame__header {
+            background: var(--whatsapp);
+            padding: 2.5rem 1.25rem 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .phone-frame__avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: white;
+        }
+
+        .phone-frame__name {
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: white;
+        }
+
+        .phone-frame__status {
+            font-size: 0.6875rem;
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .phone-frame__chat {
+            padding: 1rem;
+            min-height: 380px;
+            background: #0B141A;
+            display: flex;
+            flex-direction: column;
             gap: 0.5rem;
         }
-        footer a { color: #ccc; text-decoration: none; }
-        footer a:hover { color: #fff; }
+
+        .chat-msg {
+            max-width: 85%;
+            padding: 0.625rem 0.875rem;
+            border-radius: 12px;
+            font-size: 0.8125rem;
+            line-height: 1.5;
+            position: relative;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        .chat-msg--user {
+            align-self: flex-end;
+            background: #005C4B;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-msg--bot {
+            align-self: flex-start;
+            background: #1F2C34;
+            color: #E9EDEF;
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-msg__time {
+            font-size: 0.625rem;
+            color: rgba(255, 255, 255, 0.45);
+            text-align: right;
+            margin-top: 0.25rem;
+        }
+
+        .chat-msg--typing {
+            align-self: flex-start;
+            background: #1F2C34;
+            border-bottom-left-radius: 4px;
+            display: flex;
+            gap: 4px;
+            padding: 0.875rem 1rem;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--stone-500);
+            animation: typing-bounce 1.4s ease-in-out infinite;
+        }
+
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing-bounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-4px); opacity: 1; }
+        }
+
+        @media (max-width: 900px) {
+            .chat-demo__layout {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+            .chat-demo__info { max-width: 100%; text-align: center; }
+            .chat-demo__info .features__label,
+            .chat-demo__info .hero__subtitle { margin-left: auto; margin-right: auto; }
+        }
+
+        /* ============================================
+           STATS SECTION
+           ============================================ */
+        .stats {
+            position: relative;
+            z-index: 10;
+            padding: 0 2rem;
+            max-width: 1280px;
+            margin: 0 auto 6rem;
+        }
+
+        .stats__grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .stat-card {
+            background: rgba(28, 28, 28, 0.8);
+            padding: 2.5rem 2rem;
+            text-align: center;
+            transition: background 0.4s;
+        }
+
+        .stat-card:hover {
+            background: rgba(40, 40, 40, 0.9);
+        }
+
+        .stat-card__number {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 600;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.375rem;
+        }
+
+        .stat-card__number--green { color: var(--whatsapp); }
+        .stat-card__number--blue { color: var(--accent-blue); }
+
+        .stat-card__label {
+            font-family: var(--font-mono);
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--stone-500);
+        }
+
+        @media (max-width: 768px) {
+            .stats__grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        /* ============================================
+           CTA / FOOTER
+           ============================================ */
+        .cta-section {
+            position: relative;
+            z-index: 10;
+            padding: 6rem 2rem;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .cta-section__title {
+            font-size: clamp(2rem, 4.5vw, 3.5rem);
+            font-weight: 600;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 1.25rem;
+        }
+
+        .cta-section__sub {
+            font-size: 1.0625rem;
+            font-weight: 300;
+            color: var(--stone-400);
+            max-width: 480px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.7;
+        }
+
+        .footer {
+            position: relative;
+            z-index: 10;
+            padding: 3rem 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        .footer__brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 700;
+            font-size: 0.875rem;
+            letter-spacing: -0.01em;
+            color: var(--stone-400);
+        }
+
+        .footer__brand iconify-icon {
+            color: var(--whatsapp);
+            font-size: 1.25rem;
+        }
+
+        .footer__copy {
+            font-family: var(--font-mono);
+            font-size: 0.6875rem;
+            color: var(--stone-600);
+        }
+
         @media (max-width: 600px) {
-            header .container { flex-direction: column; text-align: center; }
-            footer .container { flex-direction: column; text-align: center; }
-            main .container h1 { font-size: 1.4rem; }
+            .footer {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+        }
+
+        /* ============================================
+           UTILITY / ANIMATION HELPERS
+           ============================================ */
+        .will-animate {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        /* Ambient glow behind hero */
+        .hero__glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(120px);
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0.15;
+        }
+
+        .hero__glow--green {
+            background: var(--whatsapp);
+            top: 20%;
+            left: -10%;
+        }
+
+        .hero__glow--blue {
+            background: var(--accent-blue);
+            bottom: 10%;
+            right: -5%;
+            opacity: 0.08;
         }
     </style>
 </head>
+
 <body>
-    <header>
-        <div class="container">
-            <span class="logo">FitAgent</span>
-            <nav>
-                <a href="privacidade.html">Política de Privacidade</a> &middot;
-                <a href="termos.html">Termos de Serviço</a>
-            </nav>
+
+    <!-- ==========================================
+         NAVIGATION
+         ========================================== -->
+    <nav class="nav" id="nav" role="navigation" aria-label="Navegação principal">
+        <div class="nav__logo">
+            <iconify-icon icon="solar:dumbbell-bold-duotone"></iconify-icon>
+            <span>FITASSIST.AI</span>
         </div>
-    </header>
-    <main>
-        <div class="container">
-            <h1>FitAgent</h1>
-            <p>Seu assistente inteligente para gestão de personal trainers via WhatsApp.</p>
+        <ul class="nav__links">
+            <li><a href="#features">Recursos</a></li>
+            <li><a href="#demo">Como funciona</a></li>
+            <li><a href="#stats">Resultados</a></li>
+        </ul>
+        <a href="#cta" class="nav__cta">
+            Começar agora
+            <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+        </a>
+    </nav>
 
-            <h2>O que é o FitAgent?</h2>
-            <p>O FitAgent é uma plataforma que permite a personal trainers gerenciar todo o seu negócio através de conversas no WhatsApp. Com o auxílio de inteligência artificial, você organiza alunos, agenda sessões de treino, acompanha pagamentos e envia notificações — tudo sem sair do WhatsApp.</p>
+    <!-- ==========================================
+         HERO SECTION
+         ========================================== -->
+    <section class="hero" id="hero">
+        <!-- Subtle grain background -->
+        <div class="hero__bg-grain"></div>
 
-            <h2>Funcionalidades</h2>
-            <ul>
-                <li>Cadastro e gerenciamento de alunos.</li>
-                <li>Agendamento e controle de sessões de treino.</li>
-                <li>Registro e acompanhamento de pagamentos.</li>
-                <li>Sincronização com Google Calendar e Microsoft Outlook.</li>
-                <li>Lembretes e notificações automáticas para alunos.</li>
-                <li>Interface conversacional com inteligência artificial.</li>
-            </ul>
+        <!-- Ambient glows -->
+        <div class="hero__glow hero__glow--green"></div>
+        <div class="hero__glow hero__glow--blue"></div>
 
-            <h2>Como funciona?</h2>
-            <p>Basta enviar uma mensagem para o nosso número no WhatsApp. O assistente de IA do FitAgent entende suas solicitações em linguagem natural e executa as ações necessárias — desde agendar um treino até registrar um pagamento.</p>
-            <p>Seus alunos também podem interagir pelo WhatsApp para consultar horários e receber lembretes de sessões e pagamentos.</p>
+        <!-- Hero content -->
+        <div class="hero__content">
+            <div class="hero__badge will-animate">
+                <span class="hero__badge-dot"></span>
+                Agente de IA ativo no WhatsApp
+            </div>
+
+            <h1 class="hero__title">
+                <span class="hero__title-line">
+                    <span class="hero__title-text">Sua rotina de</span>
+                </span>
+                <span class="hero__title-line">
+                    <span class="hero__title-text">personal no <span class="accent">piloto</span></span>
+                </span>
+                <span class="hero__title-line">
+                    <span class="hero__title-text"><span class="outline-text">automático.</span></span>
+                </span>
+            </h1>
+
+            <p class="hero__subtitle will-animate">
+                Cadastre alunos, agende treinos, confirme aulas e controle mensalidades — tudo pelo WhatsApp, com inteligência artificial.
+            </p>
+
+            <div class="hero__actions will-animate">
+                <a href="#cta" class="btn-primary">
+                    Testar gratuitamente
+                    <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+                </a>
+                <a href="#demo" class="btn-secondary">
+                    Ver demonstração
+                </a>
+            </div>
         </div>
-    </main>
-    <footer>
-        <div class="container">
-            <span>&copy; 2026 FitAgent. Todos os direitos reservados.</span>
-            <nav>
-                <a href="privacidade.html">Política de Privacidade</a> &middot;
-                <a href="termos.html">Termos de Serviço</a>
-            </nav>
+
+        <!-- Floating notification cards -->
+        <div class="hero__cards" id="heroCards">
+            <div class="float-card will-animate">
+                <div class="float-card__icon float-card__icon--green">
+                    <iconify-icon icon="solar:calendar-mark-bold-duotone"></iconify-icon>
+                </div>
+                <div>
+                    <div class="float-card__meta">Reagendamento</div>
+                    <div class="float-card__text">Aula da Ana reagendada para amanhã às 07:00</div>
+                    <div class="float-card__time">Confirmação enviada à aluna ✓</div>
+                </div>
+            </div>
+
+            <div class="float-card will-animate">
+                <div class="float-card__icon float-card__icon--whatsapp">
+                    <iconify-icon icon="solar:wallet-money-bold-duotone"></iconify-icon>
+                </div>
+                <div>
+                    <div class="float-card__meta">Pagamento</div>
+                    <div class="float-card__text">Mensalidade do João marcada como recebida</div>
+                    <div class="float-card__time">R$ 280,00 · há 2 min</div>
+                </div>
+            </div>
+
+            <div class="float-card will-animate">
+                <div class="float-card__icon float-card__icon--blue">
+                    <iconify-icon icon="solar:user-check-bold-duotone"></iconify-icon>
+                </div>
+                <div>
+                    <div class="float-card__meta">Novo cadastro</div>
+                    <div class="float-card__text">Novo aluno cadastrado com sucesso</div>
+                    <div class="float-card__time">Maria Silva · Plano mensal</div>
+                </div>
+            </div>
+
+            <div class="float-card will-animate">
+                <div class="float-card__icon float-card__icon--amber">
+                    <iconify-icon icon="solar:clock-circle-bold-duotone"></iconify-icon>
+                </div>
+                <div>
+                    <div class="float-card__meta">Confirmação</div>
+                    <div class="float-card__text">Treino confirmado para hoje às 18:00</div>
+                    <div class="float-card__time">Carlos Mendes · Academia Central</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         MARQUEE DIVIDER
+         ========================================== -->
+    <div class="marquee-section">
+        <div class="marquee-track">
+            <span class="marquee-item"><iconify-icon icon="solar:calendar-mark-bold-duotone"></iconify-icon> Agendamento inteligente</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:chat-square-call-bold-duotone"></iconify-icon> WhatsApp nativo</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:wallet-money-bold-duotone"></iconify-icon> Controle financeiro</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:user-check-bold-duotone"></iconify-icon> Cadastro de alunos</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:bell-bold-duotone"></iconify-icon> Lembretes automáticos</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:refresh-circle-bold-duotone"></iconify-icon> Reagendamento fácil</span>
+            <span class="marquee-dot"></span>
+            <!-- Duplicate for seamless loop -->
+            <span class="marquee-item"><iconify-icon icon="solar:calendar-mark-bold-duotone"></iconify-icon> Agendamento inteligente</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:chat-square-call-bold-duotone"></iconify-icon> WhatsApp nativo</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:wallet-money-bold-duotone"></iconify-icon> Controle financeiro</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:user-check-bold-duotone"></iconify-icon> Cadastro de alunos</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:bell-bold-duotone"></iconify-icon> Lembretes automáticos</span>
+            <span class="marquee-dot"></span>
+            <span class="marquee-item"><iconify-icon icon="solar:refresh-circle-bold-duotone"></iconify-icon> Reagendamento fácil</span>
+            <span class="marquee-dot"></span>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         VIDEO SCROLL-DRIVEN SECTION
+         ========================================== -->
+    <section class="video-section" id="videoSection">
+        <div class="video-section__sticky">
+            <div class="video-section__player" id="videoPlayer">
+                <video
+                    class="video-section__video"
+                    id="scrubVideo"
+                    src="../assets/video.mp4"
+                    muted
+                    playsinline
+                    preload="auto"
+                    aria-label="Demonstração do FitAssist AI em ação"
+                ></video>
+                <div class="video-section__fade-top"></div>
+                <div class="video-section__fade-bottom"></div>
+                <div class="video-section__grain"></div>
+                <div class="video-section__caption">
+                    <p>Veja o FitAssist AI em ação</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         FEATURES SECTION
+         ========================================== -->
+    <section class="features" id="features">
+        <div class="features__header will-animate">
+            <span class="features__label">Recursos</span>
+            <h2 class="features__title">Tudo que seu negócio precisa,<br/>direto no WhatsApp.</h2>
+            <p class="features__desc">Menos trabalho operacional, mais organização, mais tempo para focar nos seus alunos.</p>
+        </div>
+
+        <div class="features__grid" id="featuresGrid">
+            <div class="feature-card will-animate">
+                <div class="feature-card__icon" style="color: var(--whatsapp);">
+                    <iconify-icon icon="solar:user-plus-bold-duotone"></iconify-icon>
+                </div>
+                <h3 class="feature-card__title">Cadastro de alunos</h3>
+                <p class="feature-card__text">Registre novos alunos com uma mensagem. Nome, plano, horários — o agente organiza tudo automaticamente.</p>
+            </div>
+
+            <div class="feature-card will-animate">
+                <div class="feature-card__icon" style="color: var(--accent-blue);">
+                    <iconify-icon icon="solar:calendar-mark-bold-duotone"></iconify-icon>
+                </div>
+                <h3 class="feature-card__title">Agendamento inteligente</h3>
+                <p class="feature-card__text">Agende, reagende e cancele treinos por conversa. Detecção automática de conflitos de horário.</p>
+            </div>
+
+            <div class="feature-card will-animate">
+                <div class="feature-card__icon" style="color: var(--success);">
+                    <iconify-icon icon="solar:check-circle-bold-duotone"></iconify-icon>
+                </div>
+                <h3 class="feature-card__title">Confirmação de aulas</h3>
+                <p class="feature-card__text">Lembretes automáticos e confirmação de presença. Seus alunos recebem notificações no horário certo.</p>
+            </div>
+
+            <div class="feature-card will-animate">
+                <div class="feature-card__icon" style="color: #F59E0B;">
+                    <iconify-icon icon="solar:wallet-money-bold-duotone"></iconify-icon>
+                </div>
+                <h3 class="feature-card__title">Controle financeiro</h3>
+                <p class="feature-card__text">Registre pagamentos, acompanhe pendências e dê baixa em mensalidades sem sair do WhatsApp.</p>
+            </div>
+
+            <div class="feature-card will-animate">
+                <div class="feature-card__icon" style="color: #A855F7;">
+                    <iconify-icon icon="solar:bell-bold-duotone"></iconify-icon>
+                </div>
+                <h3 class="feature-card__title">Lembretes automáticos</h3>
+                <p class="feature-card__text">Notificações de treino, cobranças pendentes e avisos personalizados — tudo no piloto automático.</p>
+            </div>
+
+            <div class="feature-card will-animate">
+                <div class="feature-card__icon" style="color: var(--stone-300);">
+                    <iconify-icon icon="solar:magic-stick-3-bold-duotone"></iconify-icon>
+                </div>
+                <h3 class="feature-card__title">IA conversacional</h3>
+                <p class="feature-card__text">Fale naturalmente. O agente entende contexto, interpreta intenções e executa ações complexas por você.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         CHAT DEMO SECTION
+         ========================================== -->
+    <section class="chat-demo" id="demo">
+        <div class="chat-demo__layout">
+            <div class="chat-demo__info">
+                <span class="features__label will-animate">Como funciona</span>
+                <h2 class="features__title will-animate" style="text-align: left;">Converse com seu<br/>assistente. Ele resolve.</h2>
+                <p class="hero__subtitle will-animate" style="max-width: 440px;">
+                    Envie uma mensagem no WhatsApp como faria com qualquer pessoa. O agente entende, executa e confirma — em segundos.
+                </p>
+                <div class="will-animate" style="margin-top: 2rem;">
+                    <a href="#cta" class="btn-primary">
+                        Quero experimentar
+                        <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+                    </a>
+                </div>
+            </div>
+
+            <div class="chat-demo__phone will-animate">
+                <div class="phone-frame">
+                    <div class="phone-frame__header">
+                        <div class="phone-frame__avatar">
+                            <iconify-icon icon="solar:dumbbell-bold-duotone"></iconify-icon>
+                        </div>
+                        <div>
+                            <div class="phone-frame__name">FitAssist AI</div>
+                            <div class="phone-frame__status">online</div>
+                        </div>
+                    </div>
+                    <div class="phone-frame__chat" id="chatMessages">
+                        <!-- Messages injected by JS animation -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         STATS SECTION
+         ========================================== -->
+    <section class="stats" id="stats">
+        <div class="stats__grid">
+            <div class="stat-card will-animate">
+                <div class="stat-card__number stat-card__number--green" data-count="98">0</div>
+                <div class="stat-card__label">Taxa de presença</div>
+            </div>
+            <div class="stat-card will-animate">
+                <div class="stat-card__number" data-count="12" data-suffix="h">0</div>
+                <div class="stat-card__label">Economizadas por semana</div>
+            </div>
+            <div class="stat-card will-animate">
+                <div class="stat-card__number stat-card__number--blue" data-count="3" data-suffix="x">0</div>
+                <div class="stat-card__label">Mais organização</div>
+            </div>
+            <div class="stat-card will-animate">
+                <div class="stat-card__number" data-count="500" data-suffix="+">0</div>
+                <div class="stat-card__label">Personais ativos</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         CTA SECTION
+         ========================================== -->
+    <section class="cta-section" id="cta">
+        <div class="will-animate">
+            <h2 class="cta-section__title">Pronto para automatizar<br/>sua rotina?</h2>
+            <p class="cta-section__sub">Comece a usar o FitAssist AI hoje. Sem app, sem complicação — só WhatsApp.</p>
+            <a href="#" class="btn-primary" style="font-size: 1rem; padding: 1rem 2.5rem;">
+                Começar gratuitamente
+                <iconify-icon icon="solar:arrow-right-linear"></iconify-icon>
+            </a>
+        </div>
+    </section>
+
+    <!-- ==========================================
+         FOOTER
+         ========================================== -->
+    <footer class="footer">
+        <div class="footer__brand">
+            <iconify-icon icon="solar:dumbbell-bold-duotone"></iconify-icon>
+            <span>FITASSIST.AI</span>
+        </div>
+        <div class="footer__copy">
+            &copy; 2025 FitAssist AI. Todos os direitos reservados.
         </div>
     </footer>
+
+    <!-- ==========================================
+         JAVASCRIPT — Animation & Interaction Engine
+         ========================================== -->
+    <script>
+    (function() {
+        'use strict';
+
+        /* ============================================
+           LENIS SMOOTH SCROLL
+           Provides the premium, buttery scroll feel.
+           ============================================ */
+        const lenis = new Lenis({
+            duration: 1.2,
+            easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+            orientation: 'vertical',
+            smoothWheel: true,
+        });
+
+        function raf(time) {
+            lenis.raf(time);
+            requestAnimationFrame(raf);
+        }
+        requestAnimationFrame(raf);
+
+        // Connect Lenis to GSAP ScrollTrigger
+        lenis.on('scroll', ScrollTrigger.update);
+        gsap.ticker.add((time) => { lenis.raf(time * 1000); });
+        gsap.ticker.lagSmoothing(0);
+
+        /* ============================================
+           GSAP DEFAULTS
+           ============================================ */
+        gsap.defaults({
+            ease: 'power3.out',
+            duration: 1,
+        });
+
+        gsap.registerPlugin(ScrollTrigger);
+
+        /* ============================================
+           NAVIGATION — scroll-aware background
+           ============================================ */
+        const nav = document.getElementById('nav');
+        ScrollTrigger.create({
+            start: 'top -80',
+            onUpdate: (self) => {
+                if (self.scroll() > 80) {
+                    nav.classList.add('scrolled');
+                } else {
+                    nav.classList.remove('scrolled');
+                }
+            }
+        });
+
+        /* ============================================
+           HERO ENTRANCE ANIMATIONS
+           Staggered reveal of badge, title lines,
+           subtitle, CTAs, and floating cards.
+           ============================================ */
+        const heroTl = gsap.timeline({ delay: 0.3 });
+
+        // Badge
+        heroTl.fromTo('.hero__badge',
+            { opacity: 0, y: 20 },
+            { opacity: 1, y: 0, duration: 0.8 }
+        );
+
+        // Title lines — each line slides up from below
+        heroTl.fromTo('.hero__title-text',
+            { yPercent: 110, opacity: 0 },
+            { yPercent: 0, opacity: 1, duration: 1.1, stagger: 0.12, ease: 'power4.out' },
+            '-=0.4'
+        );
+
+        // Subtitle
+        heroTl.fromTo('.hero__subtitle',
+            { opacity: 0, y: 25 },
+            { opacity: 1, y: 0, duration: 0.9 },
+            '-=0.6'
+        );
+
+        // CTA buttons
+        heroTl.fromTo('.hero__actions',
+            { opacity: 0, y: 20 },
+            { opacity: 1, y: 0, duration: 0.8 },
+            '-=0.5'
+        );
+
+        // Floating cards — staggered entrance from right
+        heroTl.fromTo('.float-card',
+            { opacity: 0, x: 60, scale: 0.95 },
+            { opacity: 1, x: 0, scale: 1, duration: 0.9, stagger: 0.15, ease: 'power3.out' },
+            '-=0.6'
+        );
+
+        // Subtle continuous float on cards
+        gsap.utils.toArray('.float-card').forEach((card, i) => {
+            gsap.to(card, {
+                y: -8,
+                duration: 3 + i * 0.5,
+                repeat: -1,
+                yoyo: true,
+                ease: 'sine.inOut',
+                delay: i * 0.3,
+            });
+        });
+
+        /* ============================================
+           VIDEO SCROLL-DRIVEN PLAYBACK
+           Apple-style: fullscreen video scrubs with scroll.
+           Fades in from obsidian, plays through, fades out.
+           ============================================ */
+        const scrubVideo = document.getElementById('scrubVideo');
+        const videoPlayer = document.getElementById('videoPlayer');
+
+        if (scrubVideo) {
+            function initVideoScrub() {
+                const duration = scrubVideo.duration;
+                if (!duration || isNaN(duration)) return;
+
+                // Fade video in as section enters (first 15% of scroll)
+                gsap.fromTo(videoPlayer,
+                    { opacity: 0 },
+                    {
+                        opacity: 1,
+                        ease: 'none',
+                        scrollTrigger: {
+                            trigger: '#videoSection',
+                            start: 'top bottom',
+                            end: 'top top',
+                            scrub: true,
+                        }
+                    }
+                );
+
+                // Core scroll-driven video scrub
+                ScrollTrigger.create({
+                    trigger: '#videoSection',
+                    start: 'top top',
+                    end: 'bottom bottom',
+                    scrub: 0.1,
+                    onUpdate: (self) => {
+                        const targetTime = self.progress * duration;
+                        if (Math.abs(scrubVideo.currentTime - targetTime) > 0.02) {
+                            scrubVideo.currentTime = targetTime;
+                        }
+                    }
+                });
+
+                // Fade video out at the end
+                gsap.fromTo(videoPlayer,
+                    { opacity: 1 },
+                    {
+                        opacity: 0,
+                        ease: 'none',
+                        scrollTrigger: {
+                            trigger: '#videoSection',
+                            start: '65% top',
+                            end: '90% top',
+                            scrub: true,
+                        }
+                    }
+                );
+
+                // Pronounced zoom shift for perceived fluidity
+                gsap.fromTo('.video-section__video',
+                    { scale: 1.2 },
+                    {
+                        scale: 1,
+                        ease: 'none',
+                        scrollTrigger: {
+                            trigger: '#videoSection',
+                            start: 'top top',
+                            end: 'bottom bottom',
+                            scrub: true,
+                        }
+                    }
+                );
+
+                // Subtle vertical parallax on the whole player
+                gsap.fromTo(videoPlayer,
+                    { y: 0 },
+                    {
+                        y: -40,
+                        ease: 'none',
+                        scrollTrigger: {
+                            trigger: '#videoSection',
+                            start: 'top top',
+                            end: 'bottom bottom',
+                            scrub: true,
+                        }
+                    }
+                );
+            }
+
+            scrubVideo.addEventListener('loadedmetadata', initVideoScrub);
+            // Fallback if already loaded
+            if (scrubVideo.readyState >= 1) initVideoScrub();
+        }
+
+        /* ============================================
+           SCROLL-TRIGGERED REVEALS
+           Generic .will-animate elements fade in
+           with stagger when entering viewport.
+           ============================================ */
+        ScrollTrigger.batch('.will-animate', {
+            onEnter: (batch) => {
+                gsap.fromTo(batch,
+                    { opacity: 0, y: 30 },
+                    { opacity: 1, y: 0, duration: 0.9, stagger: 0.1, ease: 'power3.out', overwrite: true }
+                );
+            },
+            start: 'top 88%',
+            once: true,
+        });
+
+        /* ============================================
+           FEATURE CARDS — Flashlight mouse effect
+           Radial gradient follows cursor on hover.
+           ============================================ */
+        const featuresGrid = document.getElementById('featuresGrid');
+        if (featuresGrid) {
+            featuresGrid.addEventListener('mousemove', (e) => {
+                const cards = featuresGrid.querySelectorAll('.feature-card');
+                cards.forEach((card) => {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    card.style.setProperty('--mouse-x', x + 'px');
+                    card.style.setProperty('--mouse-y', y + 'px');
+                });
+            });
+        }
+
+        /* ============================================
+           CHAT DEMO — Animated conversation
+           Messages appear one by one with typing
+           indicator, simulating a real WhatsApp chat.
+           ============================================ */
+        const chatContainer = document.getElementById('chatMessages');
+        const chatMessages = [
+            { type: 'user', text: 'Reagendar aula com a Ana para amanhã às 07:00', time: '10:32' },
+            { type: 'bot', text: 'A aula da Ana foi reagendada para amanhã, sexta-feira, às 07:00. Confirmação enviada para a aluna. ✅', time: '10:32' },
+            { type: 'user', text: 'Mensalidade do João foi paga?', time: '10:33' },
+            { type: 'bot', text: 'A mensalidade do João (R$ 280,00) está pendente desde 05/03. Deseja que eu envie um lembrete para ele?', time: '10:33' },
+            { type: 'user', text: 'Sim, envia', time: '10:33' },
+            { type: 'bot', text: 'Lembrete enviado para o João via WhatsApp. Você será notificado quando ele confirmar o pagamento. 💬', time: '10:34' },
+        ];
+
+        let chatAnimated = false;
+
+        function animateChat() {
+            if (chatAnimated || !chatContainer) return;
+            chatAnimated = true;
+
+            let delay = 0;
+            chatMessages.forEach((msg, i) => {
+                delay += (i === 0) ? 300 : (msg.type === 'bot' ? 1200 : 600);
+
+                // Show typing indicator before bot messages
+                if (msg.type === 'bot') {
+                    const typingDelay = delay - 800;
+                    setTimeout(() => {
+                        const typing = document.createElement('div');
+                        typing.className = 'chat-msg chat-msg--typing';
+                        typing.id = 'typing-' + i;
+                        typing.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+                        typing.style.opacity = '1';
+                        typing.style.transform = 'translateY(0)';
+                        chatContainer.appendChild(typing);
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    }, typingDelay);
+                }
+
+                setTimeout(() => {
+                    // Remove typing indicator
+                    const typing = document.getElementById('typing-' + i);
+                    if (typing) typing.remove();
+
+                    const el = document.createElement('div');
+                    el.className = 'chat-msg chat-msg--' + msg.type;
+                    el.innerHTML = msg.text + '<div class="chat-msg__time">' + msg.time + '</div>';
+                    chatContainer.appendChild(el);
+
+                    // Animate in
+                    gsap.fromTo(el,
+                        { opacity: 0, y: 10, scale: 0.97 },
+                        { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'power2.out' }
+                    );
+
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }, delay);
+            });
+        }
+
+        // Trigger chat animation when section enters viewport
+        if (chatContainer) {
+            ScrollTrigger.create({
+                trigger: '#demo',
+                start: 'top 60%',
+                once: true,
+                onEnter: animateChat,
+            });
+        }
+
+        /* ============================================
+           STAT COUNTERS — Animated count-up
+           Numbers animate from 0 to target value
+           when the stats section enters viewport.
+           ============================================ */
+        const statNumbers = document.querySelectorAll('.stat-card__number[data-count]');
+
+        function animateCounters() {
+            statNumbers.forEach((el) => {
+                const target = parseInt(el.dataset.count, 10);
+                const suffix = el.dataset.suffix || '';
+                const obj = { val: 0 };
+
+                gsap.to(obj, {
+                    val: target,
+                    duration: 2,
+                    ease: 'power2.out',
+                    onUpdate: () => {
+                        el.textContent = Math.round(obj.val) + suffix;
+                    }
+                });
+            });
+        }
+
+        ScrollTrigger.create({
+            trigger: '#stats',
+            start: 'top 75%',
+            once: true,
+            onEnter: animateCounters,
+        });
+
+        /* ============================================
+           SMOOTH ANCHOR SCROLLING
+           Lenis handles the smooth scroll to anchors.
+           ============================================ */
+        document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+            anchor.addEventListener('click', (e) => {
+                e.preventDefault();
+                const target = document.querySelector(anchor.getAttribute('href'));
+                if (target) {
+                    lenis.scrollTo(target, { offset: -80 });
+                }
+            });
+        });
+
+        /* ============================================
+           PERFORMANCE: Reduce motion for users
+           who prefer reduced motion.
+           ============================================ */
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            gsap.globalTimeline.timeScale(20); // Effectively skip animations
+            lenis.destroy(); // Disable smooth scroll
+        }
+
+    })();
+    </script>
+
 </body>
 </html>

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <style>
+      .icon-stroke { fill: none; stroke: #1a5f7a; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <!-- AI / Gear decorative icon (top center of original image) -->
+  <!-- Central circle -->
+  <circle class="icon-stroke" cx="100" cy="100" r="22"/>
+
+  <!-- Inner detail circles -->
+  <circle class="icon-stroke" cx="100" cy="100" r="12" stroke-width="2"/>
+  <circle class="icon-stroke" cx="100" cy="100" r="5" stroke-width="2"/>
+
+  <!-- Spokes radiating outward (like a virus/AI node) -->
+  <!-- Top -->
+  <line class="icon-stroke" x1="100" y1="78" x2="100" y2="55"/>
+  <circle class="icon-stroke" cx="100" cy="50" r="7" stroke-width="2.5"/>
+
+  <!-- Top-right -->
+  <line class="icon-stroke" x1="115" y1="85" x2="133" y2="67"/>
+  <circle class="icon-stroke" cx="138" cy="62" r="7" stroke-width="2.5"/>
+
+  <!-- Right -->
+  <line class="icon-stroke" x1="122" y1="100" x2="145" y2="100"/>
+  <circle class="icon-stroke" cx="150" cy="100" r="7" stroke-width="2.5"/>
+
+  <!-- Bottom-right -->
+  <line class="icon-stroke" x1="115" y1="115" x2="133" y2="133"/>
+  <circle class="icon-stroke" cx="138" cy="138" r="7" stroke-width="2.5"/>
+
+  <!-- Bottom -->
+  <line class="icon-stroke" x1="100" y1="122" x2="100" y2="145"/>
+  <circle class="icon-stroke" cx="100" cy="150" r="7" stroke-width="2.5"/>
+
+  <!-- Bottom-left -->
+  <line class="icon-stroke" x1="85" y1="115" x2="67" y2="133"/>
+  <circle class="icon-stroke" cx="62" cy="138" r="7" stroke-width="2.5"/>
+
+  <!-- Left -->
+  <line class="icon-stroke" x1="78" y1="100" x2="55" y2="100"/>
+  <circle class="icon-stroke" cx="50" cy="100" r="7" stroke-width="2.5"/>
+
+  <!-- Top-left -->
+  <line class="icon-stroke" x1="85" y1="85" x2="67" y2="67"/>
+  <circle class="icon-stroke" cx="62" cy="62" r="7" stroke-width="2.5"/>
+
+  <!-- Small dots at end of each spoke (node tips) -->
+  <circle cx="100" cy="50" r="2.5" fill="#1a5f7a"/>
+  <circle cx="138" cy="62" r="2.5" fill="#1a5f7a"/>
+  <circle cx="150" cy="100" r="2.5" fill="#1a5f7a"/>
+  <circle cx="138" cy="138" r="2.5" fill="#1a5f7a"/>
+  <circle cx="100" cy="150" r="2.5" fill="#1a5f7a"/>
+  <circle cx="62" cy="138" r="2.5" fill="#1a5f7a"/>
+  <circle cx="50" cy="100" r="2.5" fill="#1a5f7a"/>
+  <circle cx="62" cy="62" r="2.5" fill="#1a5f7a"/>
+</svg>

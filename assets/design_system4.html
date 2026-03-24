@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html class="scroll-smooth" lang="pt-BR">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>FitAgent — Design System v1.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #EAEAE5; color: #1C1C1C; overflow-x: hidden; }
+
+        /* ===== REVEAL ANIMATIONS (from design-system.html) ===== */
+        .reveal { opacity: 0; transform: translateY(2rem); transition: all 1s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+
+        /* ===== TEXT REVEAL (from design-system.html) ===== */
+        .text-reveal-wrapper { overflow: hidden; display: inline-block; vertical-align: bottom; }
+        .text-reveal-content {
+            transform: translateY(110%); opacity: 0;
+            transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.2s ease;
+            display: block;
+        }
+        .reveal-active .text-reveal-content { transform: translateY(0); opacity: 1; }
+
+        /* ===== STAGGER DELAYS (from design-system.html) ===== */
+        .delay-100 { transition-delay: 0.1s; }
+        .delay-200 { transition-delay: 0.2s; }
+        .delay-300 { transition-delay: 0.3s; }
+        .delay-400 { transition-delay: 0.4s; }
+        .delay-500 { transition-delay: 0.5s; }
+        .delay-700 { transition-delay: 0.7s; }
+
+        /* ===== MARQUEE (from design-system.html) ===== */
+        .marquee-container { display: flex; overflow: hidden; user-select: none; }
+        .marquee-content {
+            flex-shrink: 0; display: flex; justify-content: space-around;
+            min-width: 100%; animation: scroll 40s linear infinite;
+        }
+        @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+        /* ===== NAV LOAD (from design-system.html) ===== */
+        .nav-load { opacity: 0; transform: translateY(-10px); transition: all 0.8s ease-out; }
+        .nav-load.loaded { opacity: 1; transform: translateY(0); }
+
+        /* ===== ANIMATIONS FROM GEMINI ===== */
+        @keyframes animationIn {
+            0% { opacity: 0; transform: translateY(30px); filter: blur(10px); }
+            100% { opacity: 1; transform: translateY(0); filter: blur(0px); }
+        }
+        .animate-on-scroll { animation-play-state: paused !important; }
+        .animate-on-scroll.animate { animation-play-state: running !important; }
+
+        @keyframes shimmer {
+            from { transform: translateX(-100%) skewX(-15deg); }
+            to { transform: translateX(200%) skewX(-15deg); }
+        }
+
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        @keyframes morph {
+            0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(28,28,28,0.1); }
+            50% { box-shadow: 0 0 40px rgba(28,28,28,0.25); }
+        }
+
+        /* ===== FLASHLIGHT (from gemini) ===== */
+        .flashlight-card { background: rgba(255,255,255,0.02); }
+        .flashlight-card::before {
+            content: ""; position: absolute; inset: 0;
+            background: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y), rgba(28,28,28,0.06), transparent 40%);
+            opacity: 0; transition: opacity 0.5s; pointer-events: none; z-index: 2;
+        }
+        .flashlight-card:hover::before { opacity: 1; }
+
+        /* ===== GLASS PANEL ===== */
+        .glass-panel { background: rgba(234,234,229,0.6); backdrop-filter: blur(20px); }
+
+        /* ===== PARALLAX ===== */
+        .parallax-element { will-change: transform; }
+
+        /* ===== ICON FIX ===== */
+        iconify-icon { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; }
+
+        /* ===== HERO FLOATING PARTICLES ===== */
+        .particle {
+            position: absolute; border-radius: 50%; pointer-events: none;
+            animation: float-particle linear infinite;
+        }
+        @keyframes float-particle {
+            0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100vh) translateX(50px) scale(0.5); opacity: 0; }
+        }
+
+        /* ===== GRADIENT TEXT ===== */
+        .gradient-text {
+            background: linear-gradient(180deg, #1C1C1C 30%, #a8a29e 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+
+        /* ===== TRANSPARENT LETTERING (key feature from design-system.html) ===== */
+        .text-transparent-stroke {
+            -webkit-text-fill-color: transparent;
+            -webkit-text-stroke: 1.5px #1C1C1C;
+            color: transparent;
+        }
+        .text-transparent-stroke-light {
+            -webkit-text-fill-color: transparent;
+            -webkit-text-stroke: 1px #a8a29e;
+            color: transparent;
+        }
+
+        /* ===== BEAM BUTTON (from gemini) ===== */
+        .beam-btn { position: relative; overflow: hidden; }
+        .beam-btn::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            transform: translateX(-100%); transition: none;
+        }
+        .beam-btn:hover::before { animation: shimmer 1.5s infinite; }
+
+        /* ===== SECTION BG PATTERNS ===== */
+        .bg-grid-subtle {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(28,28,28,0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(28,28,28,0.03) 1px, transparent 1px);
+        }
+        .bg-dots-subtle {
+            background-image: radial-gradient(circle, rgba(28,28,28,0.06) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+
+        /* ===== MORPHING BLOB ===== */
+        .blob { animation: morph 8s ease-in-out infinite; }
+
+        /* ===== CAROUSEL (from design-system.html) ===== */
+        .carousel-slide { position: absolute; inset: 0; transition: opacity 1.5s ease-in-out; opacity: 0; overflow: hidden; }
+        .carousel-slide.active { opacity: 1; }
+        .carousel-slide img { transform: scale(1); transition: transform 10s ease-out; }
+        .carousel-slide.active img { transform: scale(1.1); }
+
+        /* ===== COUNTER ANIMATION ===== */
+        @keyframes countUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="antialiased min-h-screen selection:bg-stone-800 selection:text-white">
+
+<!-- ============================================================
+     MAIN CONTAINER (design-system.html structure)
+     ============================================================ -->
+<div class="max-w-[1400px] mx-auto border-x border-stone-300 relative bg-[#EAEAE5]">
+
+    <!-- Vertical Grid Guide Lines -->
+    <div class="absolute inset-0 pointer-events-none grid grid-cols-1 md:grid-cols-12 gap-0 z-0 h-full w-full">
+        <div class="hidden md:block md:col-span-3 border-r border-stone-300/40 h-full"></div>
+        <div class="hidden md:block md:col-span-6 border-r border-stone-300/40 h-full"></div>
+        <div class="hidden md:block md:col-span-3 h-full"></div>
+    </div>
+
+    <!-- ============================================================
+         NAVIGATION
+         ============================================================ -->
+    <header class="relative z-50 border-b border-stone-300 sticky top-0 bg-[#EAEAE5]/90 backdrop-blur-md nav-load">
+        <div class="flex justify-between items-center px-4 md:px-6 py-5">
+            <div class="flex items-center gap-6">
+                <a class="text-xs font-medium tracking-widest uppercase hover:text-stone-500 transition-colors" href="#typography">Tipografia</a>
+                <a class="text-xs font-medium tracking-widest uppercase hover:text-stone-500 transition-colors" href="#colors">Cores</a>
+                <a class="text-xs font-medium tracking-widest uppercase hidden md:block hover:text-stone-500 transition-colors" href="#components">Componentes</a>
+            </div>
+            <div class="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 group cursor-pointer">
+                <iconify-icon class="text-xl group-hover:rotate-180 transition-transform duration-700" icon="solar:dumbbell-large-minimalistic-linear"></iconify-icon>
+                <span class="font-bold tracking-tighter text-lg">FITAGENT</span>
+            </div>
+            <div class="flex items-center gap-6">
+                <a class="text-xs font-medium tracking-widest uppercase hidden md:block hover:text-stone-500 transition-colors" href="#icons">Ícones</a>
+                <a class="text-xs font-medium tracking-widest uppercase hover:text-stone-500 transition-colors" href="#motion">Animações</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================================================
+         SECTION 0 — HERO
+         ============================================================ -->
+    <section class="relative z-10 grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 min-h-[700px] overflow-hidden">
+
+        <!-- Animated Background Particles -->
+        <div class="absolute inset-0 pointer-events-none overflow-hidden z-0" id="hero-particles"></div>
+
+        <!-- Animated Grid BG -->
+        <div class="absolute inset-0 bg-grid-subtle pointer-events-none z-0"></div>
+
+        <!-- Morphing Blob Decoration -->
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-stone-300/30 blob pointer-events-none z-0 blur-3xl"></div>
+
+        <!-- Hero Left Content -->
+        <div class="col-span-1 md:col-span-8 border-b md:border-b-0 md:border-r border-stone-300 relative p-8 md:p-12 flex flex-col justify-between min-h-[500px]">
+
+            <!-- Top Badge -->
+            <div class="flex items-center gap-3 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.1s_both]">
+                <div class="h-px w-8 bg-stone-400"></div>
+                <span class="text-xs font-mono uppercase tracking-[0.25em] text-stone-500">Design System v1.0</span>
+                <span class="w-1.5 h-1.5 bg-stone-800 rounded-full animate-pulse"></span>
+            </div>
+
+            <!-- Main Title with Transparent Lettering -->
+            <div class="my-auto py-12">
+                <h1 class="text-7xl md:text-[9rem] font-semibold tracking-tighter leading-[0.85] mb-6" id="hero-title">
+                    <span class="text-reveal-wrapper"><span class="text-reveal-content delay-200 gradient-text">Fit</span></span><br>
+                    <span class="text-reveal-wrapper"><span class="text-reveal-content delay-300 text-transparent-stroke">Agent</span></span>
+                </h1>
+                <p class="text-lg text-stone-500 max-w-lg leading-relaxed animate-on-scroll [animation:animationIn_0.8s_ease-out_0.5s_both]">
+                    Sistema de design para o assistente de IA que gerencia a rotina completa de personal trainers — alunos, agenda, pagamentos e notificações via WhatsApp.
+                </p>
+
+                <!-- CTA Buttons -->
+                <div class="flex flex-wrap gap-4 mt-8 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.6s_both]">
+                    <!-- Beam Button (from gemini) -->
+                    <button class="beam-btn group relative flex items-center gap-2 px-8 py-4 bg-stone-900 text-white rounded-full text-sm font-medium hover:bg-stone-700 transition-all overflow-hidden">
+                        <span class="relative z-10">Explorar Sistema</span>
+                        <iconify-icon class="text-lg relative z-10 group-hover:translate-x-1 transition-transform" icon="solar:arrow-right-linear"></iconify-icon>
+                    </button>
+                    <!-- Outline Pill (from design-system.html) -->
+                    <a class="inline-flex items-center gap-2 text-sm font-medium uppercase tracking-widest border border-stone-900 rounded-full px-8 py-4 hover:bg-stone-900 hover:text-white transition-all" href="#components">
+                        Componentes
+                        <iconify-icon class="text-lg" icon="solar:arrow-down-linear"></iconify-icon>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Bottom Marquee -->
+            <div class="border-t border-stone-300 -mx-8 md:-mx-12 px-0 pt-6 overflow-hidden">
+                <div class="marquee-container">
+                    <div class="marquee-content">
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Cadastro de Alunos</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Agenda de Treinos</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Controle de Pagamentos</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Notificações WhatsApp</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Calendário Inteligente</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                    </div>
+                    <div class="marquee-content">
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Cadastro de Alunos</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Agenda de Treinos</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Controle de Pagamentos</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Notificações WhatsApp</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">Calendário Inteligente</span>
+                        <span class="text-xs font-mono uppercase tracking-widest text-stone-400 mx-8">•</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hero Right Stats (from design-system.html pattern) -->
+        <div class="col-span-1 md:col-span-4 grid grid-rows-4 h-full">
+            <!-- Stat 1 -->
+            <div class="row-span-1 border-b border-stone-300 p-8 flex flex-col justify-between reveal delay-300 hero-stat group hover:bg-white transition-colors duration-500">
+                <iconify-icon class="text-3xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:users-group-rounded-linear"></iconify-icon>
+                <div>
+                    <h2 class="text-5xl font-medium tracking-tighter">06</h2>
+                    <span class="text-xs font-mono text-stone-500 mt-1 block">AGENTES IA</span>
+                </div>
+            </div>
+            <!-- Stat 2 -->
+            <div class="row-span-1 border-b border-stone-300 p-8 flex flex-col justify-between reveal delay-500 hero-stat group hover:bg-white transition-colors duration-500">
+                <iconify-icon class="text-3xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:calendar-minimalistic-linear"></iconify-icon>
+                <div>
+                    <h2 class="text-5xl font-medium tracking-tighter">24/7</h2>
+                    <span class="text-xs font-mono text-stone-500 mt-1 block">DISPONIBILIDADE</span>
+                </div>
+            </div>
+            <!-- Stat 3 -->
+            <div class="row-span-1 border-b border-stone-300 p-8 flex flex-col justify-between reveal delay-500 hero-stat group hover:bg-white transition-colors duration-500">
+                <iconify-icon class="text-3xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:chat-round-dots-linear"></iconify-icon>
+                <div>
+                    <h2 class="text-5xl font-medium tracking-tighter">∞</h2>
+                    <span class="text-xs font-mono text-stone-500 mt-1 block">CONVERSAS</span>
+                </div>
+            </div>
+            <!-- Stat 4 -->
+            <div class="row-span-1 p-8 flex flex-col justify-between reveal delay-700 hero-stat group hover:bg-white transition-colors duration-500 relative overflow-hidden">
+                <iconify-icon class="text-3xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:shield-check-linear"></iconify-icon>
+                <div>
+                    <h2 class="text-5xl font-medium tracking-tighter">100%</h2>
+                    <span class="text-xs font-mono text-stone-500 mt-1 block">SERVERLESS</span>
+                </div>
+                <div class="absolute top-4 right-4">
+                    <iconify-icon class="text-stone-200 text-6xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" icon="solar:star-fall-linear" style="animation: float 3s ease-in-out infinite;"></iconify-icon>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 1 — TYPOGRAPHY
+         ============================================================ -->
+    <section id="typography" class="relative z-10 border-b border-stone-300">
+        <!-- Animated BG -->
+        <div class="absolute inset-0 bg-dots-subtle pointer-events-none z-0"></div>
+
+        <div class="relative z-10 p-8 md:p-12 border-b border-stone-300 bg-stone-100/50">
+            <div class="flex items-center gap-3 mb-2 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.1s_both]">
+                <div class="h-px w-8 bg-stone-400"></div>
+                <span class="text-xs font-mono uppercase text-stone-500 tracking-[0.2em]">01 / Foundations</span>
+            </div>
+            <h2 class="text-4xl font-medium tracking-tight reveal">Tipografia</h2>
+        </div>
+
+        <!-- Font Info -->
+        <div class="relative z-10 grid grid-cols-1 md:grid-cols-12 border-b border-stone-300">
+            <div class="col-span-4 p-8 md:p-12 border-b md:border-b-0 md:border-r border-stone-300 reveal">
+                <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-6">Font Stack</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between border-b border-stone-300 pb-2">
+                        <span class="text-sm text-stone-600">Primary</span>
+                        <span class="text-xs font-mono text-stone-400">Inter</span>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-stone-300 pb-2">
+                        <span class="text-sm text-stone-600">Fallback</span>
+                        <span class="text-xs font-mono text-stone-400">system-ui, sans-serif</span>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-stone-300 pb-2">
+                        <span class="text-sm text-stone-600">Monospace</span>
+                        <span class="text-xs font-mono text-stone-400">ui-monospace, monospace</span>
+                    </div>
+                    <div class="flex items-center justify-between border-b border-stone-300 pb-2">
+                        <span class="text-sm text-stone-600">Loading</span>
+                        <span class="text-xs font-mono text-stone-400">Google CDN, swap</span>
+                    </div>
+                    <div class="flex items-center justify-between pb-2">
+                        <span class="text-sm text-stone-600">Weights</span>
+                        <span class="text-xs font-mono text-stone-400">100–900</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-span-8 p-8 md:p-12 flex items-center reveal delay-200">
+                <div>
+                    <h2 class="text-5xl md:text-7xl font-semibold tracking-tighter text-stone-900 mb-4">
+                        <span class="text-transparent-stroke">Inter</span> Typeface
+                    </h2>
+                    <p class="text-lg text-stone-500 leading-relaxed max-w-lg">
+                        Tipografia geométrica otimizada para interfaces digitais. Alta legibilidade em telas de todos os tamanhos, com suporte completo a pesos variáveis.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Type Scale -->
+        <div class="relative z-10 grid grid-cols-1">
+            <!-- H1 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Display H1</div>
+                <div class="col-span-6">
+                    <h1 class="text-6xl md:text-8xl font-semibold tracking-tighter leading-none text-stone-900">FitAgent</h1>
+                </div>
+                <div class="col-span-3 text-right space-y-1">
+                    <div class="text-xs font-mono text-stone-400">font-weight: 600</div>
+                    <div class="text-xs font-mono text-stone-400">font-size: 6rem</div>
+                    <div class="text-xs font-mono text-stone-400">line-height: 1</div>
+                    <div class="text-xs font-mono text-stone-400">letter-spacing: -0.025em</div>
+                </div>
+            </div>
+            <!-- H2 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Heading H2</div>
+                <div class="col-span-6">
+                    <h2 class="text-5xl font-medium tracking-tighter text-stone-900">Agenda & Treinos</h2>
+                </div>
+                <div class="col-span-3 text-right space-y-1">
+                    <div class="text-xs font-mono text-stone-400">font-weight: 500</div>
+                    <div class="text-xs font-mono text-stone-400">font-size: 3rem</div>
+                    <div class="text-xs font-mono text-stone-400">line-height: tight</div>
+                    <div class="text-xs font-mono text-stone-400">letter-spacing: -0.025em</div>
+                </div>
+            </div>
+            <!-- H3 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Heading H3</div>
+                <div class="col-span-6">
+                    <h3 class="text-4xl font-medium tracking-tight text-stone-900">Gestão de Alunos</h3>
+                </div>
+                <div class="col-span-3 text-right space-y-1">
+                    <div class="text-xs font-mono text-stone-400">font-weight: 500</div>
+                    <div class="text-xs font-mono text-stone-400">font-size: 2.25rem</div>
+                    <div class="text-xs font-mono text-stone-400">line-height: tight</div>
+                    <div class="text-xs font-mono text-stone-400">letter-spacing: -0.015em</div>
+                </div>
+            </div>
+            <!-- H4 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Heading H4</div>
+                <div class="col-span-6">
+                    <h4 class="text-2xl font-medium tracking-tight text-stone-900">Confirmação de Pagamento</h4>
+                </div>
+                <div class="col-span-3 text-right space-y-1">
+                    <div class="text-xs font-mono text-stone-400">font-weight: 500</div>
+                    <div class="text-xs font-mono text-stone-400">font-size: 1.5rem</div>
+                </div>
+            </div>
+            <!-- H5 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Heading H5</div>
+                <div class="col-span-6">
+                    <h5 class="text-xl font-medium text-stone-900">Detalhes da Sessão</h5>
+                </div>
+                <div class="col-span-3 text-right"><div class="text-xs font-mono text-stone-400">font-size: 1.25rem</div></div>
+            </div>
+            <!-- H6 -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Heading H6</div>
+                <div class="col-span-6">
+                    <h6 class="text-lg font-semibold text-stone-900">Status do Aluno</h6>
+                </div>
+                <div class="col-span-3 text-right"><div class="text-xs font-mono text-stone-400">font-size: 1.125rem / 600</div></div>
+            </div>
+            <!-- Body Large -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Body Large</div>
+                <div class="col-span-6">
+                    <p class="text-lg leading-relaxed text-stone-800">Gerencie toda a sua base de alunos, agende treinos e acompanhe pagamentos com inteligência artificial.</p>
+                </div>
+                <div class="col-span-3 text-right"><div class="text-xs font-mono text-stone-400">1.125rem / relaxed / 400</div></div>
+            </div>
+            <!-- Body -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Body</div>
+                <div class="col-span-6">
+                    <p class="text-base leading-relaxed text-stone-700">Sessão agendada para segunda-feira às 07:00. O aluno confirmou presença via WhatsApp.</p>
+                </div>
+                <div class="col-span-3 text-right"><div class="text-xs font-mono text-stone-400">1rem / relaxed / 400</div></div>
+            </div>
+            <!-- Body Small -->
+            <div class="grid grid-cols-1 md:grid-cols-12 border-b border-stone-300 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Body Small</div>
+                <div class="col-span-6">
+                    <p class="text-sm leading-relaxed text-stone-600">Pagamento pendente desde 15/03. Lembrete automático enviado.</p>
+                </div>
+                <div class="col-span-3 text-right"><div class="text-xs font-mono text-stone-400">0.875rem / relaxed / 400</div></div>
+            </div>
+            <!-- Caption / Label / Helper -->
+            <div class="grid grid-cols-1 md:grid-cols-12 p-8 md:p-12 items-baseline reveal">
+                <div class="col-span-3 text-xs font-mono text-stone-400 uppercase tracking-widest mb-4 md:mb-0">Label / Mono</div>
+                <div class="col-span-6 space-y-3">
+                    <span class="text-xs font-mono uppercase tracking-widest text-stone-500 block">CAPTION — TRAINER#uuid • SESSION#uuid</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-stone-900 block">LABEL — ATIVO</span>
+                    <span class="text-xs text-stone-400 block">Helper — Máximo de 30 alunos por plano</span>
+                </div>
+                <div class="col-span-3 text-right"><div class="text-xs font-mono text-stone-400">0.75rem / widest / 500–700</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 2 — COLORS
+         ============================================================ -->
+    <section id="colors" class="relative z-10 border-b border-stone-300">
+        <div class="absolute inset-0 bg-grid-subtle pointer-events-none z-0"></div>
+
+        <div class="relative z-10 p-8 md:p-12 border-b border-stone-300 bg-stone-100/50">
+            <div class="flex items-center gap-3 mb-2 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.1s_both]">
+                <div class="h-px w-8 bg-stone-400"></div>
+                <span class="text-xs font-mono uppercase text-stone-500 tracking-[0.2em]">02 / Foundations</span>
+            </div>
+            <h2 class="text-4xl font-medium tracking-tight reveal">Sistema de Cores</h2>
+        </div>
+
+        <!-- Primary Palette -->
+        <div class="relative z-10 grid grid-cols-2 md:grid-cols-4">
+            <!-- Background Main -->
+            <div class="col-span-1 p-8 md:p-12 border-r border-b border-stone-300 bg-[#EAEAE5] flex flex-col justify-between aspect-square flashlight-card relative group" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                <div>
+                    <div class="text-stone-900 font-bold text-sm">Background</div>
+                    <div class="text-xs text-stone-500 mt-1">Primary / Neutral</div>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-mono text-xs text-stone-500">#EAEAE5</div>
+                    <div class="font-mono text-xs text-stone-400">rgb(234, 234, 229)</div>
+                    <div class="font-mono text-xs text-stone-400">hsl(60, 5%, 91%)</div>
+                    <div class="text-xs text-stone-400 mt-2">Contrast: AAA on dark</div>
+                </div>
+            </div>
+            <!-- Stone 900 -->
+            <div class="col-span-1 p-8 md:p-12 border-r border-b border-stone-300 bg-stone-900 flex flex-col justify-between aspect-square flashlight-card relative group" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                <div>
+                    <div class="text-white font-bold text-sm">Primary</div>
+                    <div class="text-xs text-stone-400 mt-1">Text / Buttons / Active</div>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-mono text-xs text-stone-400">#1c1917</div>
+                    <div class="font-mono text-xs text-stone-500">rgb(28, 25, 23)</div>
+                    <div class="font-mono text-xs text-stone-500">hsl(24, 10%, 10%)</div>
+                    <div class="text-xs text-stone-500 mt-2">Contrast: AAA on light</div>
+                </div>
+            </div>
+            <!-- Stone 500 -->
+            <div class="col-span-1 p-8 md:p-12 border-r border-b border-stone-300 bg-stone-500 flex flex-col justify-between aspect-square flashlight-card relative group" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                <div>
+                    <div class="text-white font-bold text-sm">Secondary</div>
+                    <div class="text-xs text-stone-200 mt-1">Muted text / Borders</div>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-mono text-xs text-stone-200">#78716c</div>
+                    <div class="font-mono text-xs text-stone-300">rgb(120, 113, 108)</div>
+                    <div class="font-mono text-xs text-stone-300">hsl(25, 5%, 45%)</div>
+                    <div class="text-xs text-stone-200 mt-2">Contrast: AA on light</div>
+                </div>
+            </div>
+            <!-- White -->
+            <div class="col-span-1 p-8 md:p-12 border-b border-stone-300 bg-white flex flex-col justify-between aspect-square flashlight-card relative group" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                <div>
+                    <div class="text-stone-900 font-bold text-sm">Surface</div>
+                    <div class="text-xs text-stone-500 mt-1">Cards / Hover / Elevated</div>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-mono text-xs text-stone-500">#FFFFFF</div>
+                    <div class="font-mono text-xs text-stone-400">rgb(255, 255, 255)</div>
+                    <div class="font-mono text-xs text-stone-400">hsl(0, 0%, 100%)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Semantic Colors -->
+        <div class="relative z-10 grid grid-cols-2 md:grid-cols-5">
+            <div class="p-6 border-r border-b border-stone-300 bg-emerald-600 text-white reveal">
+                <div class="font-bold text-sm mb-1">Success</div>
+                <div class="text-xs opacity-80">Pagamento confirmado</div>
+                <div class="font-mono text-xs mt-3 opacity-70">#059669</div>
+            </div>
+            <div class="p-6 border-r border-b border-stone-300 bg-amber-500 text-white reveal delay-100">
+                <div class="font-bold text-sm mb-1">Warning</div>
+                <div class="text-xs opacity-80">Pagamento pendente</div>
+                <div class="font-mono text-xs mt-3 opacity-70">#f59e0b</div>
+            </div>
+            <div class="p-6 border-r border-b border-stone-300 bg-red-500 text-white reveal delay-200">
+                <div class="font-bold text-sm mb-1">Error</div>
+                <div class="text-xs opacity-80">Sessão cancelada</div>
+                <div class="font-mono text-xs mt-3 opacity-70">#ef4444</div>
+            </div>
+            <div class="p-6 border-r border-b border-stone-300 bg-blue-500 text-white reveal delay-300">
+                <div class="font-bold text-sm mb-1">Info</div>
+                <div class="text-xs opacity-80">Lembrete enviado</div>
+                <div class="font-mono text-xs mt-3 opacity-70">#3b82f6</div>
+            </div>
+            <div class="p-6 border-b border-stone-300 bg-stone-300 text-stone-800 reveal delay-400">
+                <div class="font-bold text-sm mb-1">Disabled</div>
+                <div class="text-xs opacity-70">Inativo / Desabilitado</div>
+                <div class="font-mono text-xs mt-3 opacity-50">#d6d3d1</div>
+            </div>
+        </div>
+
+        <!-- Gradients -->
+        <div class="relative z-10 p-8 md:p-12">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Gradientes</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="h-32 rounded-lg reveal" style="background: linear-gradient(135deg, #1c1917 0%, #78716c 100%);"></div>
+                <div class="h-32 rounded-lg reveal delay-100" style="background: linear-gradient(135deg, #EAEAE5 0%, #d6d3d1 50%, #a8a29e 100%);"></div>
+                <div class="h-32 rounded-lg reveal delay-200" style="background: linear-gradient(180deg, #1c1917 30%, transparent 100%);"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 3 — UI COMPONENTS
+         ============================================================ -->
+    <section id="components" class="relative z-10 border-b border-stone-300">
+        <div class="absolute inset-0 bg-dots-subtle pointer-events-none z-0"></div>
+
+        <div class="relative z-10 p-8 md:p-12 border-b border-stone-300 bg-stone-100/50">
+            <div class="flex items-center gap-3 mb-2 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.1s_both]">
+                <div class="h-px w-8 bg-stone-400"></div>
+                <span class="text-xs font-mono uppercase text-stone-500 tracking-[0.2em]">03 / UI Elements</span>
+            </div>
+            <h2 class="text-4xl font-medium tracking-tight reveal">Componentes</h2>
+        </div>
+
+        <!-- BUTTONS -->
+        <div class="relative z-10 grid grid-cols-1 md:grid-cols-2 border-b border-stone-300">
+            <div class="p-8 md:p-12 border-b md:border-b-0 md:border-r border-stone-300">
+                <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Botões & Ações</h3>
+                <div class="space-y-8">
+                    <!-- Primary -->
+                    <div class="flex items-center gap-4 reveal">
+                        <button class="beam-btn px-6 py-3 bg-stone-900 text-white rounded-md text-sm font-medium hover:bg-stone-700 transition-all flex items-center gap-2 group">
+                            Agendar Treino
+                            <iconify-icon class="text-lg group-hover:translate-x-1 transition-transform" icon="solar:calendar-add-linear"></iconify-icon>
+                        </button>
+                        <span class="text-xs font-mono text-stone-400">Primary</span>
+                    </div>
+                    <!-- Beam Pill -->
+                    <div class="flex items-center gap-4 reveal delay-100">
+                        <button class="group relative flex items-center gap-2 px-8 py-3 bg-stone-900 text-white rounded-full text-sm font-medium overflow-hidden">
+                            <span class="absolute inset-[-1000%] animate-[spin_2s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0_340deg,white_360deg)]"></span>
+                            <span class="relative flex items-center gap-2 bg-stone-900 rounded-full px-6 py-2 ring-1 ring-white/10">
+                                <span class="absolute inset-0 overflow-hidden rounded-full"><span class="absolute top-0 left-0 h-full w-full -skew-x-12 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:animate-[shimmer_1.5s_infinite] group-hover:opacity-100"></span></span>
+                                <span class="relative z-10">Beam Button</span>
+                                <iconify-icon class="relative z-10 text-lg group-hover:translate-x-1 transition-transform" icon="solar:arrow-right-linear"></iconify-icon>
+                            </span>
+                        </button>
+                        <span class="text-xs font-mono text-stone-400">Beam</span>
+                    </div>
+                    <!-- Outline Pill -->
+                    <div class="flex items-center gap-4 reveal delay-200">
+                        <a class="inline-flex items-center gap-2 text-sm font-medium uppercase tracking-widest border border-stone-900 rounded-full px-8 py-3 hover:bg-stone-900 hover:text-white transition-all" href="#">
+                            Ver Alunos
+                            <iconify-icon class="text-lg" icon="solar:arrow-right-linear"></iconify-icon>
+                        </a>
+                        <span class="text-xs font-mono text-stone-400">Outline Pill</span>
+                    </div>
+                    <!-- Text Link -->
+                    <div class="flex items-center gap-4 reveal delay-300">
+                        <a class="text-sm font-medium text-stone-600 hover:text-stone-900 border-b border-stone-400 hover:border-stone-900 pb-0.5 transition-colors" href="#">Ver histórico</a>
+                        <span class="text-xs font-mono text-stone-400">Text Link</span>
+                    </div>
+                    <!-- Disabled -->
+                    <div class="flex items-center gap-4 reveal delay-400">
+                        <button class="px-6 py-3 bg-stone-300 text-stone-500 rounded-md text-sm font-medium cursor-not-allowed" disabled>Indisponível</button>
+                        <span class="text-xs font-mono text-stone-400">Disabled</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BADGES & INPUTS -->
+            <div class="p-8 md:p-12">
+                <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Badges & Inputs</h3>
+                <div class="space-y-8">
+                    <!-- Badges -->
+                    <div class="flex flex-wrap gap-3 reveal">
+                        <span class="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold uppercase">Ativo</span>
+                        <span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold uppercase">Pendente</span>
+                        <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-bold uppercase">Cancelado</span>
+                        <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold uppercase">Agendado</span>
+                        <span class="px-3 py-1 border border-stone-300 text-stone-600 rounded-full text-xs font-bold uppercase">Inativo</span>
+                    </div>
+                    <!-- Glass Badge -->
+                    <div class="flex items-center gap-4 bg-stone-900 p-4 rounded max-w-max reveal delay-100">
+                        <span class="px-3 py-1 border border-white/40 rounded-full text-xs font-mono uppercase backdrop-blur-md text-white">Trainer</span>
+                        <span class="px-3 py-1 border border-white/40 rounded-full text-xs font-mono uppercase backdrop-blur-md text-white">Student</span>
+                    </div>
+                    <!-- Input -->
+                    <div class="max-w-sm reveal delay-200">
+                        <label class="text-xs font-bold uppercase tracking-wider text-stone-900 mb-2 block">Nome do Aluno</label>
+                        <div class="relative">
+                            <iconify-icon class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" icon="solar:user-linear"></iconify-icon>
+                            <input class="w-full bg-white border border-stone-300 rounded-md py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 transition-all placeholder-stone-400" placeholder="Digite o nome..." type="text"/>
+                        </div>
+                    </div>
+                    <!-- Search -->
+                    <div class="max-w-sm reveal delay-300">
+                        <div class="relative">
+                            <iconify-icon class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" icon="solar:magnifer-linear"></iconify-icon>
+                            <input class="w-full bg-stone-100 border border-stone-200 rounded-full py-3 pl-10 pr-4 text-sm focus:outline-none focus:bg-white focus:border-stone-900 transition-all placeholder-stone-400" placeholder="Buscar aluno, sessão..." type="text"/>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARDS -->
+        <div class="relative z-10 border-b border-stone-300 p-8 md:p-12">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Cards</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Student Card -->
+                <div class="group border border-stone-300 bg-[#EAEAE5] hover:bg-white transition-colors duration-500 cursor-pointer overflow-hidden reveal flashlight-card relative" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-stone-900 rounded-full flex items-center justify-center text-white text-sm font-bold">MA</div>
+                            <div>
+                                <h4 class="font-medium group-hover:translate-x-1 transition-transform duration-500">Maria Alves</h4>
+                                <span class="text-xs text-stone-500">Musculação • Seg/Qua/Sex</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-stone-300 pt-3">
+                            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-bold">ATIVO</span>
+                            <iconify-icon class="text-stone-300 text-xl group-hover:text-stone-900 transition-all" icon="solar:arrow-right-up-linear"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+                <!-- Session Card -->
+                <div class="group border border-stone-300 bg-[#EAEAE5] hover:bg-white transition-colors duration-500 cursor-pointer overflow-hidden reveal delay-100 flashlight-card relative" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <iconify-icon class="text-2xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:calendar-minimalistic-linear"></iconify-icon>
+                            <div>
+                                <h4 class="font-medium group-hover:translate-x-1 transition-transform duration-500">Treino de Força</h4>
+                                <span class="text-xs text-stone-500">Seg, 07:00 — 08:00</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-stone-300 pt-3">
+                            <span class="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-bold">CONFIRMADO</span>
+                            <iconify-icon class="text-stone-300 text-xl group-hover:text-stone-900 transition-all" icon="solar:arrow-right-up-linear"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+                <!-- Payment Card -->
+                <div class="group border border-stone-300 bg-[#EAEAE5] hover:bg-white transition-colors duration-500 cursor-pointer overflow-hidden reveal delay-200 flashlight-card relative" onmousemove="this.style.setProperty('--mouse-x',`${event.offsetX}px`);this.style.setProperty('--mouse-y',`${event.offsetY}px`);">
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <iconify-icon class="text-2xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:wallet-linear"></iconify-icon>
+                            <div>
+                                <h4 class="font-medium group-hover:translate-x-1 transition-transform duration-500">Pagamento Março</h4>
+                                <span class="text-xs text-stone-500">R$ 350,00 — Pix</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-stone-300 pt-3">
+                            <span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs font-bold">PENDENTE</span>
+                            <iconify-icon class="text-stone-300 text-xl group-hover:text-stone-900 transition-all" icon="solar:arrow-right-up-linear"></iconify-icon>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NAVBAR -->
+        <div class="relative z-10 border-b border-stone-300 p-8 md:p-12">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Navbar</h3>
+            <div class="border border-stone-300 rounded-lg overflow-hidden bg-white reveal">
+                <div class="flex justify-between items-center px-6 py-4">
+                    <div class="flex items-center gap-2">
+                        <iconify-icon class="text-xl" icon="solar:dumbbell-large-minimalistic-linear"></iconify-icon>
+                        <span class="font-bold tracking-tighter">FITAGENT</span>
+                    </div>
+                    <div class="hidden md:flex items-center gap-8">
+                        <a class="text-xs font-medium uppercase tracking-widest text-stone-900" href="#">Dashboard</a>
+                        <a class="text-xs font-medium uppercase tracking-widest text-stone-500 hover:text-stone-900 transition-colors" href="#">Alunos</a>
+                        <a class="text-xs font-medium uppercase tracking-widest text-stone-500 hover:text-stone-900 transition-colors" href="#">Agenda</a>
+                        <a class="text-xs font-medium uppercase tracking-widest text-stone-500 hover:text-stone-900 transition-colors" href="#">Pagamentos</a>
+                    </div>
+                    <button class="px-4 py-2 bg-stone-900 text-white rounded-md text-xs font-medium hover:bg-stone-700 transition-all">Novo Aluno</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL -->
+        <div class="relative z-10 border-b border-stone-300 p-8 md:p-12">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Modal</h3>
+            <div class="max-w-md mx-auto reveal">
+                <div class="bg-white border border-stone-300 rounded-lg shadow-2xl overflow-hidden" style="animation: pulse-glow 3s ease-in-out infinite;">
+                    <div class="p-6 border-b border-stone-200">
+                        <div class="flex items-center justify-between">
+                            <h4 class="font-medium text-lg">Confirmar Sessão</h4>
+                            <button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone-100 transition-colors">
+                                <iconify-icon class="text-stone-400" icon="solar:close-circle-linear"></iconify-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <p class="text-sm text-stone-600 mb-4">Deseja confirmar o treino de <strong>Maria Alves</strong> para segunda-feira às 07:00?</p>
+                        <div class="flex gap-3">
+                            <button class="flex-1 px-4 py-2.5 bg-stone-900 text-white rounded-md text-sm font-medium hover:bg-stone-700 transition-all">Confirmar</button>
+                            <button class="flex-1 px-4 py-2.5 border border-stone-300 rounded-md text-sm font-medium hover:bg-stone-100 transition-all">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TOOLTIPS -->
+        <div class="relative z-10 p-8 md:p-12">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-8 reveal">Tooltips</h3>
+            <div class="flex flex-wrap gap-8 items-center reveal">
+                <div class="relative group cursor-help">
+                    <button class="px-4 py-2 border border-stone-300 rounded-md text-sm hover:bg-stone-100 transition-colors">Hover me</button>
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none">
+                        <div class="bg-stone-900 text-white text-xs font-medium px-3 py-1.5 rounded whitespace-nowrap">
+                            Agendar novo treino
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-stone-900"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="relative group cursor-help">
+                    <iconify-icon class="text-2xl text-stone-400 group-hover:text-stone-800 transition-colors" icon="solar:info-circle-linear"></iconify-icon>
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 pointer-events-none">
+                        <div class="bg-stone-900 text-white text-xs font-medium px-3 py-1.5 rounded whitespace-nowrap">
+                            Informações do aluno
+                            <div class="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-l-transparent border-r-4 border-r-transparent border-t-4 border-t-stone-900"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 4 — ICONS
+         ============================================================ -->
+    <section id="icons" class="relative z-10 border-b border-stone-300">
+        <div class="absolute inset-0 bg-grid-subtle pointer-events-none z-0"></div>
+
+        <div class="relative z-10 p-8 md:p-12 border-b border-stone-300 bg-stone-100/50">
+            <div class="flex items-center gap-3 mb-2 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.1s_both]">
+                <div class="h-px w-8 bg-stone-400"></div>
+                <span class="text-xs font-mono uppercase text-stone-500 tracking-[0.2em]">04 / Assets</span>
+            </div>
+            <h2 class="text-4xl font-medium tracking-tight reveal">Iconografia</h2>
+        </div>
+
+        <div class="relative z-10 p-8 md:p-12">
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-6 reveal">Fitness & Gestão</h3>
+            <div class="grid grid-cols-3 md:grid-cols-8 gap-6 reveal">
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:dumbbell-large-minimalistic-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">treino</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:users-group-rounded-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">alunos</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:calendar-minimalistic-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">agenda</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:wallet-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">pagamento</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:chat-round-dots-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">whatsapp</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:bell-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">notificação</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:check-circle-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">confirmar</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:shield-check-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">segurança</span>
+                </div>
+            </div>
+
+            <h3 class="text-sm font-bold uppercase tracking-widest text-stone-900 mb-6 mt-12 reveal">Sistema & Navegação</h3>
+            <div class="grid grid-cols-3 md:grid-cols-8 gap-6 reveal">
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:arrow-right-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">arrow</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:arrow-right-up-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">external</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:magnifer-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">buscar</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:close-circle-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">fechar</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:pen-new-square-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">editar</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:trash-bin-trash-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">excluir</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:settings-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">config</span>
+                </div>
+                <div class="flex flex-col items-center gap-3 group cursor-pointer">
+                    <div class="w-14 h-14 border border-stone-300 rounded-lg flex items-center justify-center bg-white group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+                        <iconify-icon class="text-2xl" icon="solar:atom-linear"></iconify-icon>
+                    </div>
+                    <span class="text-xs font-mono text-stone-500">ai agent</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 5 — ANIMATIONS
+         ============================================================ -->
+    <section id="motion" class="relative z-10 border-b border-stone-300 overflow-hidden">
+        <div class="absolute inset-0 bg-dots-subtle pointer-events-none z-0"></div>
+
+        <div class="relative z-10 p-8 md:p-12 border-b border-stone-300 bg-stone-100/50">
+            <div class="flex items-center gap-3 mb-2 animate-on-scroll [animation:animationIn_0.8s_ease-out_0.1s_both]">
+                <div class="h-px w-8 bg-stone-400"></div>
+                <span class="text-xs font-mono uppercase text-stone-500 tracking-[0.2em]">05 / Interaction</span>
+            </div>
+            <h2 class="text-4xl font-medium tracking-tight reveal">Animações</h2>
+        </div>
+
+        <!-- Marquee Demo -->
+        <div class="relative z-10 py-12 border-b border-stone-300 bg-stone-100/50">
+            <div class="text-center text-xs font-mono text-stone-400 mb-4 reveal">Infinite Marquee — scroll 40s linear</div>
+            <div class="marquee-container">
+                <div class="marquee-content">
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">Easing: cubic-bezier(0.16, 1, 0.3, 1)</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">•</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">Duration: 1.2s</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">•</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">Blur In: 10px → 0</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">•</span>
+                </div>
+                <div class="marquee-content">
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">Easing: cubic-bezier(0.16, 1, 0.3, 1)</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">•</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">Duration: 1.2s</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">•</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">Blur In: 10px → 0</span>
+                    <span class="text-sm font-mono uppercase tracking-widest text-stone-500 mx-8">•</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reveal Examples -->
+        <div class="relative z-10 p-8 md:p-12 grid grid-cols-1 md:grid-cols-3 gap-8 border-b border-stone-300">
+            <div class="p-6 border border-stone-300 rounded bg-white reveal">
+                <span class="text-xs font-mono text-stone-400 block mb-2">.reveal</span>
+                <h4 class="text-xl font-medium">Scroll Reveal</h4>
+                <p class="text-xs text-stone-500 mt-2">translateY(2rem) → 0, opacity 0 → 1</p>
+            </div>
+            <div class="p-6 border border-stone-300 rounded bg-white reveal delay-200">
+                <span class="text-xs font-mono text-stone-400 block mb-2">.reveal .delay-200</span>
+                <h4 class="text-xl font-medium">Staggered</h4>
+                <p class="text-xs text-stone-500 mt-2">transition-delay: 0.2s</p>
+            </div>
+            <div class="p-6 border border-stone-300 rounded bg-white animate-on-scroll [animation:animationIn_0.8s_ease-out_0.3s_both]">
+                <span class="text-xs font-mono text-stone-400 block mb-2">.animate-on-scroll</span>
+                <h4 class="text-xl font-medium">Blur In</h4>
+                <p class="text-xs text-stone-500 mt-2">blur(10px) → 0, translateY(30px) → 0</p>
+            </div>
+        </div>
+
+        <!-- Text Reveal Demo -->
+        <div class="relative z-10 p-8 md:p-12 border-b border-stone-300 text-center">
+            <span class="text-xs font-mono text-stone-400 block mb-8 reveal">Masked Text Reveal — .text-reveal-wrapper</span>
+            <h2 class="text-6xl md:text-8xl font-semibold tracking-tighter leading-none text-stone-900 reveal">
+                <span class="text-reveal-wrapper"><span class="text-reveal-content">Personal</span></span>
+            </h2>
+            <h2 class="text-6xl md:text-8xl font-semibold tracking-tighter leading-none text-transparent-stroke-light reveal delay-200">
+                <span class="text-reveal-wrapper"><span class="text-reveal-content delay-200">Trainer</span></span>
+            </h2>
+        </div>
+
+        <!-- Morphing Blob Demo -->
+        <div class="relative z-10 p-8 md:p-12 flex flex-col items-center gap-6">
+            <span class="text-xs font-mono text-stone-400 reveal">Morphing Blob — border-radius animation 8s</span>
+            <div class="relative reveal">
+                <div class="w-32 h-32 bg-stone-300/50 blob blur-md"></div>
+                <div class="w-32 h-32 border border-stone-400 blob absolute inset-0"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================
+         FOOTER
+         ============================================================ -->
+    <footer class="relative z-10 bg-stone-900 text-stone-200 pt-24 pb-12">
+        <div class="px-6 md:px-12 mb-24 text-center">
+            <div class="reveal">
+                <h2 class="text-5xl md:text-7xl font-medium tracking-tighter mb-8 text-white">
+                    Seu assistente<br/><span class="text-transparent-stroke" style="-webkit-text-stroke-color: #a8a29e;">inteligente.</span>
+                </h2>
+                <a class="inline-block border border-stone-700 rounded-full px-8 py-4 text-lg hover:bg-white hover:text-stone-900 transition-all duration-300 beam-btn" href="#">
+                    Começar Agora
+                </a>
+            </div>
+        </div>
+        <div class="border-t border-stone-800 w-full mb-12"></div>
+        <div class="grid grid-cols-1 md:grid-cols-12 px-6 md:px-12 gap-12 md:gap-0">
+            <div class="col-span-1 md:col-span-4">
+                <div class="flex items-center gap-2 mb-6">
+                    <iconify-icon class="text-xl" icon="solar:dumbbell-large-minimalistic-linear"></iconify-icon>
+                    <span class="font-bold tracking-tight text-lg">FITAGENT</span>
+                </div>
+                <p class="text-stone-500 text-sm leading-relaxed max-w-[250px]">
+                    Assistente de IA para personal trainers. Gerencie alunos, agenda e pagamentos via WhatsApp.
+                </p>
+            </div>
+            <div class="col-span-1 md:col-span-4">
+                <h4 class="text-xs font-mono uppercase text-stone-500 mb-6">Stack</h4>
+                <ul class="space-y-3 text-sm font-medium">
+                    <li class="text-stone-400">AWS Lambda + Bedrock</li>
+                    <li class="text-stone-400">Strands Agents SDK</li>
+                    <li class="text-stone-400">DynamoDB Single-Table</li>
+                    <li class="text-stone-400">Twilio WhatsApp API</li>
+                </ul>
+            </div>
+            <div class="col-span-1 md:col-span-4 flex flex-col justify-between">
+                <div>
+                    <h4 class="text-xs font-mono uppercase text-stone-500 mb-6">Design Tokens</h4>
+                    <ul class="space-y-3 text-sm font-medium">
+                        <li class="text-stone-400">Font: Inter (100–900)</li>
+                        <li class="text-stone-400">Palette: Stone (Tailwind)</li>
+                        <li class="text-stone-400">Icons: Solar (Iconify)</li>
+                        <li class="text-stone-400">Easing: cubic-bezier(0.16, 1, 0.3, 1)</li>
+                    </ul>
+                </div>
+                <div class="text-right mt-6">
+                    <span class="text-xs text-stone-600">© 2026 FitAgent</span>
+                </div>
+            </div>
+        </div>
+        <!-- Big Ghost Text -->
+        <div class="mt-24 text-center opacity-[0.04] pointer-events-none select-none overflow-hidden">
+            <span class="text-[10rem] md:text-[18rem] font-bold leading-none tracking-tighter whitespace-nowrap">FITAGENT</span>
+        </div>
+    </footer>
+
+</div><!-- end main container -->
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // 1. Nav load animation
+    setTimeout(() => { document.querySelector('header').classList.add('loaded'); }, 100);
+
+    // 2. Hero title text reveal
+    setTimeout(() => {
+        const heroTitle = document.getElementById('hero-title');
+        if (heroTitle) heroTitle.classList.add('reveal-active');
+    }, 500);
+
+    // 3. Hero stats
+    setTimeout(() => {
+        document.querySelectorAll('.hero-stat').forEach(el => el.classList.add('active'));
+    }, 500);
+
+    // 4. Scroll Observer for .reveal
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('active');
+                if (entry.target.querySelector('.text-reveal-content') || entry.target.classList.contains('text-reveal-wrapper')) {
+                    entry.target.classList.add('reveal-active');
+                }
+                if (entry.target.tagName === 'H2' || entry.target.tagName === 'H1') {
+                    entry.target.classList.add('reveal-active');
+                }
+            }
+        });
+    }, { threshold: 0.15 });
+
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    document.querySelectorAll('h1, h2').forEach(el => {
+        if (el.querySelector('.text-reveal-content')) observer.observe(el);
+    });
+
+    // 5. Animate-on-scroll (from gemini)
+    const ioOnce = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animate');
+                ioOnce.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.2 });
+    document.querySelectorAll('.animate-on-scroll').forEach(el => ioOnce.observe(el));
+
+    // 6. Hero Particles
+    const particleContainer = document.getElementById('hero-particles');
+    if (particleContainer) {
+        for (let i = 0; i < 20; i++) {
+            const p = document.createElement('div');
+            p.classList.add('particle');
+            const size = Math.random() * 4 + 2;
+            p.style.width = size + 'px';
+            p.style.height = size + 'px';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.bottom = '-10px';
+            p.style.background = `rgba(28,28,28,${Math.random() * 0.15 + 0.05})`;
+            p.style.animationDuration = (Math.random() * 10 + 8) + 's';
+            p.style.animationDelay = (Math.random() * 10) + 's';
+            particleContainer.appendChild(p);
+        }
+    }
+});
+</script>
+
+</body>
+</html>

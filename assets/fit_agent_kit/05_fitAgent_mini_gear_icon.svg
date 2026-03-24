@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <style>
+      .mini-stroke { fill: none; stroke: #1a5f7a; stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <!-- Small gear with dumbbell icon (bottom center of original) -->
+  <!-- Gear outline with teeth -->
+  <path class="mini-stroke" d="
+    M 100 28
+    L 112 37 L 120 34 L 126 44 L 118 53
+    A 52 52 0 0 1 142 68
+    L 152 65 L 159 72 L 157 82 L 147 86
+    A 52 52 0 0 1 152 100
+    A 52 52 0 0 1 147 114
+    L 157 118 L 159 128 L 152 135 L 142 132
+    A 52 52 0 0 1 126 147
+    L 126 156 L 120 162 L 112 159 L 100 168
+    L 88 159 L 80 162 L 74 156 L 74 147
+    A 52 52 0 0 1 58 132
+    L 48 135 L 41 128 L 43 118 L 53 114
+    A 52 52 0 0 1 48 100
+    A 52 52 0 0 1 53 86
+    L 43 82 L 41 72 L 48 65 L 58 68
+    A 52 52 0 0 1 82 53
+    L 74 44 L 80 34 L 88 37 L 100 28 Z
+  "/>
+
+  <!-- Inner circle -->
+  <circle class="mini-stroke" cx="100" cy="100" r="38" stroke-width="2.5"/>
+
+  <!-- Mini dumbbell inside gear -->
+  <!-- Left plate -->
+  <rect class="mini-stroke" x="46" y="90" width="7" height="20" rx="2"/>
+  <rect class="mini-stroke" x="52" y="86" width="6" height="28" rx="2"/>
+  <!-- Bar -->
+  <rect class="mini-stroke" x="58" y="93" width="84" height="14" rx="3"/>
+  <!-- Right plate -->
+  <rect class="mini-stroke" x="142" y="86" width="6" height="28" rx="2"/>
+  <rect class="mini-stroke" x="147" y="90" width="7" height="20" rx="2"/>
+
+  <!-- Mini hand gripping bar -->
+  <path class="mini-stroke" d="
+    M 74 93
+    Q 72 83 78 77
+    Q 86 72 94 76
+    L 116 76
+    Q 124 72 130 77
+    Q 136 83 134 93
+    L 134 115
+    Q 136 122 128 126
+    Q 120 129 110 127
+    L 80 127
+    Q 70 125 68 116
+    Q 64 107 74 103 Z
+  " stroke-width="3"/>
+
+  <!-- Finger lines (simplified) -->
+  <line class="mini-stroke" x1="82" y1="93" x2="82" y2="86" stroke-width="2.5"/>
+  <line class="mini-stroke" x1="92" y1="93" x2="92" y2="83" stroke-width="2.5"/>
+  <line class="mini-stroke" x1="102" y1="93" x2="102" y2="83" stroke-width="2.5"/>
+  <line class="mini-stroke" x1="112" y1="93" x2="112" y2="86" stroke-width="2.5"/>
+  <!-- Thumb -->
+  <path class="mini-stroke" d="M 74 103 Q 64 100 62 93 Q 60 85 70 80" stroke-width="2.5"/>
+</svg>

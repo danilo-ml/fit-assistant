@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 150" width="300" height="150">
+  <defs>
+    <style>
+      .hb-stroke { fill: none; stroke: #1a5f7a; stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <!-- Heartbeat / ECG line with dumbbell integrated -->
+  <!-- ECG line: flat, spike up, spike down, flat, then dumbbell shape -->
+  <polyline class="hb-stroke" points="
+    10,75
+    50,75
+    65,30
+    80,110
+    95,55
+    115,75
+    145,75
+  "/>
+
+  <!-- Small dumbbell at end of heartbeat line -->
+  <!-- Left plate -->
+  <rect class="hb-stroke" x="145" y="60" width="8" height="30" rx="2"/>
+  <!-- Bar -->
+  <rect class="hb-stroke" x="153" y="68" width="44" height="14" rx="3"/>
+  <!-- Right plate -->
+  <rect class="hb-stroke" x="197" y="60" width="8" height="30" rx="2"/>
+
+  <!-- Fist/hand holding dumbbell (simplified) -->
+  <!-- Palm -->
+  <path class="hb-stroke" d="M 160 68 Q 158 56 164 50 Q 172 44 180 48 Q 188 44 196 50 Q 202 56 200 68"/>
+  <!-- Fingers suggestion -->
+  <line class="hb-stroke" x1="168" y1="68" x2="168" y2="60" stroke-width="3"/>
+  <line class="hb-stroke" x1="176" y1="68" x2="176" y2="58" stroke-width="3"/>
+  <line class="hb-stroke" x1="184" y1="68" x2="184" y2="58" stroke-width="3"/>
+  <line class="hb-stroke" x1="192" y1="68" x2="192" y2="60" stroke-width="3"/>
+  <!-- Thumb -->
+  <path class="hb-stroke" d="M 160 78 Q 150 76 148 68 Q 147 60 156 58"/>
+
+  <!-- Continuing line after dumbbell -->
+  <line class="hb-stroke" x1="205" y1="75" x2="290" y2="75"/>
+</svg>
