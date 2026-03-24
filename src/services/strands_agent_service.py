@@ -28,7 +28,7 @@ from strands import Agent
 from strands.models.bedrock import BedrockModel
 from botocore.exceptions import ClientError
 
-from tools import student_tools, session_tools, payment_tools, calendar_tools, group_session_tools, bulk_import_tools
+from tools import student_tools, session_tools, payment_tools, calendar_tools, group_session_tools, bulk_import_tools, notification_tools
 from models.dynamodb_client import DynamoDBClient
 from utils.logging import get_logger
 from config import settings
@@ -129,7 +129,7 @@ class StrandsAgentService:
             trainer_id: Trainer identifier to inject into all tool calls
 
         Returns:
-            Tuple of (student_agent, session_agent, payment_agent, calendar_agent)
+            Tuple of (student_agent, session_agent, payment_agent, calendar_agent, notification_agent)
         """
         from strands import tool
         from datetime import datetime, timezone, timedelta
@@ -274,6 +274,12 @@ class StrandsAgentService:
             """Connect Google Calendar or Outlook Calendar to sync training sessions. IMPORTANT: You MUST call this tool to get the OAuth URL. NEVER invent or construct OAuth URLs yourself."""
             return calendar_tools.connect_calendar(trainer_id, provider)
 
+        # ── Notification domain inner tools ─────────────────────────────
+        @tool
+        def send_notification_inner(message: str, recipients: str = "all", specific_student_ids: List[str] = None) -> Dict[str, Any]:
+            """Send a notification/message to students. recipients can be 'all' (all active students), 'specific' (requires specific_student_ids), or 'upcoming_sessions' (students with sessions in next 7 days)."""
+            return notification_tools.send_notification(trainer_id, message, recipients, specific_student_ids)
+
         # ── Domain Agent Tool Functions ─────────────────────────────────
 
         @tool
@@ -403,13 +409,43 @@ REGRAS CRÍTICAS:
             else:
                 return str(result)
 
+        @tool
+        def notification_agent(query: str) -> str:
+            """Handle notification queries: send messages/notifications to students (all, specific, or those with upcoming sessions)."""
+            agent = Agent(
+                model=model,
+                system_prompt="""Você é um agente especializado em envio de notificações e mensagens para alunos de personal trainers no Brasil.
+
+Sua função é EXCLUSIVAMENTE enviar notificações/mensagens para alunos:
+- Enviar notificação para todos os alunos (send_notification_inner com recipients="all")
+- Enviar notificação para alunos específicos (send_notification_inner com recipients="specific" e specific_student_ids)
+- Enviar notificação para alunos com sessões próximas (send_notification_inner com recipients="upcoming_sessions")
+
+TIPOS DE DESTINATÁRIOS:
+- "all": Todos os alunos ativos do trainer
+- "specific": Alunos específicos (requer lista de IDs)
+- "upcoming_sessions": Alunos com sessões nos próximos 7 dias
+
+REGRAS CRÍTICAS:
+- SEMPRE chame as ferramentas disponíveis para executar ações. NUNCA invente resultados.
+- NUNCA fabrique IDs de alunos ou qualquer dado.
+- Se faltar informação obrigatória, PERGUNTE ao usuário.
+- Para enviar notificação, você PRECISA de: mensagem e tipo de destinatários.
+- Se o usuário não especificar destinatários, use "all" como padrão.
+- Responda SEMPRE em português brasileiro (PT-BR).
+- Seja claro, objetivo e amigável.""",
+                tools=[send_notification_inner],
+            )
+            result = agent(query)
+            return str(result)
+
         logger.info(
             "Domain agent tools built",
             trainer_id=trainer_id,
-            agents=["student_agent(+bulk_import_students)", "session_agent", "payment_agent", "calendar_agent"]
+            agents=["student_agent(+bulk_import_students)", "session_agent", "payment_agent", "calendar_agent", "notification_agent"]
         )
 
-        return student_agent, session_agent, payment_agent, calendar_agent
+        return student_agent, session_agent, payment_agent, calendar_agent, notification_agent
 
     def _is_bulk_import_message(self, message: str) -> bool:
         """Check if a message is a bulk import request.
@@ -656,24 +692,26 @@ REGRAS CRÍTICAS:
                 return self._handle_bulk_import_fast_path(trainer_id, message, phone_number)
 
             # Build domain agent tools bound to this trainer_id
-            student_agent, session_agent, payment_agent, calendar_agent = \
+            student_agent, session_agent, payment_agent, calendar_agent, notification_agent = \
                 self._build_domain_agent_tools(trainer_id)
 
             # Create orchestrator agent with domain agent tools
             orchestrator_prompt = """Você é um assistente de IA para personal trainers no Brasil via WhatsApp.
 
-Você tem 4 agentes especialistas disponíveis como ferramentas. Encaminhe a solicitação do usuário para o agente correto:
+Você tem 5 agentes especialistas disponíveis como ferramentas. Encaminhe a solicitação do usuário para o agente correto:
 
 - student_agent: Para QUALQUER assunto sobre alunos (registrar, listar, atualizar alunos)
 - session_agent: Para QUALQUER assunto sobre sessões de treino (agendar, reagendar, cancelar sessões individuais ou em grupo, ver calendário, inscrever/remover alunos de grupos)
 - payment_agent: Para QUALQUER assunto sobre pagamentos (registrar, confirmar, visualizar pagamentos e status)
 - calendar_agent: Para QUALQUER assunto sobre conectar/sincronizar calendário (Google Calendar, Outlook)
+- notification_agent: Para QUALQUER assunto sobre enviar notificações ou mensagens para alunos (notificar, avisar, broadcast)
 
 REGRAS DE ROTEAMENTO:
 - Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno", "importar alunos", "import students", "planilha", "Google Sheets", "CSV" → student_agent
 - Palavras como "sessão", "agendar", "reagendar", "cancelar sessão", "calendário", "treino", "horário", "grupo", "inscrever" → session_agent
 - Palavras como "pagamento", "pagar", "valor", "recibo", "mensalidade", "confirmar pagamento" → payment_agent
 - Palavras como "conectar calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
+- Palavras como "notificação", "notificar", "avisar", "mensagem para alunos", "enviar mensagem", "broadcast", "avisar alunos" → notification_agent
 - Para conversa geral (saudações, perguntas sobre funcionalidades, ajuda) → responda diretamente SEM chamar nenhuma ferramenta
 
 REGRAS CRÍTICAS:
@@ -688,7 +726,7 @@ REGRAS CRÍTICAS:
             orchestrator = Agent(
                 model=self.model,
                 system_prompt=orchestrator_prompt,
-                tools=[student_agent, session_agent, payment_agent, calendar_agent],
+                tools=[student_agent, session_agent, payment_agent, calendar_agent, notification_agent],
             )
 
             # Inject conversation history if available
