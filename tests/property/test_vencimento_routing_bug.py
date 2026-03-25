@@ -131,6 +131,36 @@ def _get_orchestrator_prompt(trainer_id: str):
             return None
 
 
+def _get_student_agent_docstring(trainer_id: str) -> str:
+    """
+    Build domain agent tools and extract the student_agent tool's docstring.
+
+    Calls _build_domain_agent_tools and returns the __doc__ attribute of the
+    student_agent function (the first tool returned).
+    """
+    with patch('src.services.strands_agent_service.settings') as mock_settings:
+        mock_settings.bedrock_model_id = 'anthropic.claude-3-sonnet-20240229-v1:0'
+        mock_settings.bedrock_region = 'us-east-1'
+        mock_settings.aws_endpoint_url = None
+        mock_settings.aws_bedrock_endpoint_url = None
+        mock_settings.dynamodb_table = 'fitagent-main'
+
+        with patch('src.services.strands_agent_service.DynamoDBClient') as MockDB:
+            mock_db = MagicMock()
+            MockDB.return_value = mock_db
+
+            service = StrandsAgentService.__new__(StrandsAgentService)
+            service.model = MagicMock()
+            service.db_client = mock_db
+
+            # Reset Agent mock so inner Agent() calls don't fail
+            _mock_agent_cls.reset_mock()
+            _mock_agent_cls.return_value = MagicMock()
+
+            student_agent, *_ = service._build_domain_agent_tools(trainer_id)
+            return student_agent.__doc__ or ""
+
+
 def _prompt_routes_vencimento_to_student_agent(prompt: str) -> bool:
     """
     Check if the orchestrator prompt contains explicit routing rules that
@@ -219,6 +249,188 @@ def test_orchestrator_routes_vencimento_changes_to_student_agent(
         f"{[line.strip() for line in prompt.split(chr(10)) if 'student_agent' in line.lower()]}\n"
         f"Current payment_agent routing rule: "
         f"{[line.strip() for line in prompt.split(chr(10)) if 'payment_agent' in line.lower()]}"
+    )
+
+
+@given(
+    palavra_vencimento=palavras_vencimento,
+    acao=acoes_alteracao,
+    nome_aluno=nomes_alunos,
+    dia=dias,
+)
+@settings(
+    max_examples=10,
+    phases=[Phase.generate],
+    deadline=None,
+)
+def test_priority_rule_appears_before_routing_rules(
+    palavra_vencimento, acao, nome_aluno, dia
+):
+    """
+    Property 1b: Bug Condition — Posição da Regra Prioritária.
+
+    **Validates: Requirements 1.1, 1.2**
+
+    The orchestrator_prompt SHALL contain a priority/disambiguation rule
+    (e.g. "REGRA PRIORITÁRIA" or equivalent) that appears BEFORE the general
+    "REGRAS DE ROTEAMENTO" section. This ensures the LLM sees the vencimento
+    disambiguation instruction before encountering "mensalidade → payment_agent".
+
+    **EXPECTED ON UNFIXED CODE**: FAILS — "REGRA DE DESAMBIGUAÇÃO" appears
+    AFTER "REGRAS DE ROTEAMENTO", so the LLM prioritizes the earlier rules.
+
+    **EXPECTED ON FIXED CODE**: PASSES — priority rule is positioned before
+    general routing rules.
+    """
+    message = build_vencimento_message(palavra_vencimento, acao, nome_aluno, dia)
+
+    prompt = _get_orchestrator_prompt("test-trainer-001")
+    assert prompt is not None, "Could not find orchestrator Agent creation with routing prompt"
+
+    prompt_upper = prompt.upper()
+
+    # Find position of priority/disambiguation rule
+    priority_pos = -1
+    for marker in ["REGRA PRIORITÁRIA", "REGRA PRIORITARIA"]:
+        pos = prompt_upper.find(marker)
+        if pos >= 0:
+            priority_pos = pos
+            break
+
+    # Find position of general routing rules
+    routing_pos = prompt_upper.find("REGRAS DE ROTEAMENTO")
+
+    assert priority_pos >= 0, (
+        f"Bug confirmed: orchestrator_prompt does NOT contain a 'REGRA PRIORITÁRIA' section.\n"
+        f"Message: '{message}'\n"
+        f"The disambiguation rule ('REGRA DE DESAMBIGUAÇÃO') exists but is not labeled as "
+        f"a priority rule. The LLM sees 'mensalidade → payment_agent' first and ignores "
+        f"the later disambiguation.\n"
+        f"Sections found: {[s.strip() for s in prompt.split(chr(10)) if 'REGRA' in s.upper()]}"
+    )
+
+    assert routing_pos >= 0, (
+        f"Could not find 'REGRAS DE ROTEAMENTO' section in the prompt."
+    )
+
+    assert priority_pos < routing_pos, (
+        f"Bug confirmed: priority rule appears AFTER routing rules (pos {priority_pos} vs {routing_pos}).\n"
+        f"Message: '{message}'\n"
+        f"The LLM processes instructions top-to-bottom and will match "
+        f"'mensalidade → payment_agent' before reaching the disambiguation rule."
+    )
+
+
+@given(
+    palavra_vencimento=palavras_vencimento,
+    acao=acoes_alteracao,
+    nome_aluno=nomes_alunos,
+    dia=dias,
+)
+@settings(
+    max_examples=10,
+    phases=[Phase.generate],
+    deadline=None,
+)
+def test_student_agent_docstring_mentions_vencimento(
+    palavra_vencimento, acao, nome_aluno, dia
+):
+    """
+    Property 1c: Bug Condition — Docstring do student_agent Menciona Vencimento.
+
+    **Validates: Requirements 1.1, 1.2**
+
+    The @tool student_agent docstring SHALL mention "vencimento" or
+    "dia de pagamento" so the LLM considers student_agent as a candidate
+    when routing vencimento-related messages.
+
+    **EXPECTED ON UNFIXED CODE**: FAILS — the docstring says only
+    "Handle student management queries: register new students, view student list,
+    update student information" with no mention of vencimento.
+
+    **EXPECTED ON FIXED CODE**: PASSES — docstring includes vencimento/dia de pagamento.
+    """
+    message = build_vencimento_message(palavra_vencimento, acao, nome_aluno, dia)
+
+    docstring = _get_student_agent_docstring("test-trainer-001")
+    docstring_lower = docstring.lower()
+
+    has_vencimento = "vencimento" in docstring_lower
+    has_dia_pagamento = "dia de pagamento" in docstring_lower
+
+    assert has_vencimento or has_dia_pagamento, (
+        f"Bug confirmed: student_agent docstring does NOT mention 'vencimento' or 'dia de pagamento'.\n"
+        f"Message: '{message}'\n"
+        f"Current docstring: '{docstring}'\n"
+        f"Without 'vencimento' in the tool description, the LLM has no signal to route "
+        f"vencimento messages to student_agent."
+    )
+
+
+@given(
+    palavra_vencimento=palavras_vencimento,
+    acao=acoes_alteracao,
+    nome_aluno=nomes_alunos,
+    dia=dias,
+)
+@settings(
+    max_examples=10,
+    phases=[Phase.generate],
+    deadline=None,
+)
+def test_prompt_contains_concrete_routing_examples(
+    palavra_vencimento, acao, nome_aluno, dia
+):
+    """
+    Property 1d: Bug Condition — Exemplos Concretos de Roteamento no Prompt.
+
+    **Validates: Requirements 1.1, 1.2**
+
+    The orchestrator_prompt SHALL contain concrete routing examples
+    (e.g. "alterar vencimento da mensalidade da juliana → student_agent")
+    to guide the LLM with few-shot examples, not just abstract rules.
+
+    **EXPECTED ON UNFIXED CODE**: FAILS — the prompt contains only abstract
+    keyword → agent rules without concrete message examples.
+
+    **EXPECTED ON FIXED CODE**: PASSES — prompt includes concrete examples.
+    """
+    message = build_vencimento_message(palavra_vencimento, acao, nome_aluno, dia)
+
+    prompt = _get_orchestrator_prompt("test-trainer-001")
+    assert prompt is not None, "Could not find orchestrator Agent creation with routing prompt"
+
+    prompt_lower = prompt.lower()
+
+    # Look for concrete routing examples — messages with → or -> pointing to an agent
+    # Examples like: "alterar vencimento da mensalidade da juliana → student_agent"
+    has_concrete_example = False
+
+    # Check for arrow-style examples (→ or ->)
+    example_pattern = re.compile(
+        r'(alterar|mudar|trocar|atualizar).*(vencimento|dia de pagamento|dia do pagamento).*'
+        r'(→|->)\s*student_agent',
+        re.IGNORECASE,
+    )
+    if example_pattern.search(prompt):
+        has_concrete_example = True
+
+    # Also check for "exemplo" or "ex:" sections with vencimento routing
+    if not has_concrete_example:
+        exemplo_pattern = re.compile(
+            r'(exemplo|ex:|e\.g\.).*'
+            r'(vencimento|dia de pagamento).*student_agent',
+            re.IGNORECASE,
+        )
+        if exemplo_pattern.search(prompt):
+            has_concrete_example = True
+
+    assert has_concrete_example, (
+        f"Bug confirmed: orchestrator_prompt does NOT contain concrete routing examples.\n"
+        f"Message: '{message}'\n"
+        f"The prompt uses only abstract keyword → agent rules without concrete message "
+        f"examples. LLMs respond better to few-shot examples than abstract rules.\n"
+        f"Expected something like: 'alterar vencimento da mensalidade da juliana → student_agent'"
     )
 
 

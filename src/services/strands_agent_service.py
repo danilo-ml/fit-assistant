@@ -294,7 +294,7 @@ class StrandsAgentService:
 
         @tool
         def student_agent(query: str) -> str:
-            """Handle student management queries: register new students, view student list, update student information."""
+            """Handle student management queries: register new students, view student list, update student information, change payment due date (vencimento/dia de pagamento)."""
             agent = Agent(
                 model=model,
                 system_prompt="""Você é um agente especializado em gerenciamento de alunos para personal trainers no Brasil.
@@ -311,6 +311,9 @@ REGRAS CRÍTICAS:
 - NUNCA fabrique IDs de alunos, nomes ou qualquer dado.
 - Se faltar informação obrigatória, PERGUNTE ao usuário.
 - Para registrar aluno, você PRECISA de: nome completo, telefone (+5511999999999), email, objetivo de treino e dia de vencimento (1-31).
+- Quando uma ferramenta retornar dados (ex: view_students), você DEVE formatar e exibir TODOS os dados na resposta: nome, telefone, email, objetivo de treino e dia de vencimento. Use formato de lista numerada. NUNCA diga 'aqui está a lista' sem incluir os dados reais.
+- Para ALTERAR dados de alunos existentes (incluindo vencimento/dia de pagamento), use SEMPRE update_student com student_name. Use register_student APENAS para cadastrar alunos NOVOS.
+- Para alterar o dia de vencimento, use update_student com o parâmetro payment_due_day (1-31).
 - Responda SEMPRE em português brasileiro (PT-BR).
 - Seja claro, objetivo e amigável.""",
                 tools=[register_student, view_students, update_student, bulk_import_students],
@@ -746,6 +749,15 @@ Você tem 5 agentes especialistas disponíveis como ferramentas. Encaminhe a sol
 - calendar_agent: Para QUALQUER assunto sobre conectar/sincronizar calendário (Google Calendar, Outlook)
 - notification_agent: Para QUALQUER assunto sobre enviar notificações ou mensagens para alunos (notificar, avisar, broadcast)
 
+REGRA PRIORITÁRIA — VENCIMENTO/DIA DE PAGAMENTO:
+Se a mensagem contém "vencimento" ou "dia de vencimento" ou "dia do pagamento" junto com ação de alteração ("alterar", "mudar", "trocar", "atualizar"), SEMPRE encaminhe para student_agent, mesmo que contenha "mensalidade". O campo payment_due_day é um atributo do cadastro do aluno, não uma operação de pagamento.
+
+EXEMPLOS DE ROTEAMENTO:
+- "alterar vencimento da mensalidade da juliana para dia 28" → student_agent
+- "mudar dia de pagamento do João para 15" → student_agent
+- "registrar pagamento de R$300 da Maria" → payment_agent
+- "ver pagamentos do Pedro" → payment_agent
+
 REGRAS DE ROTEAMENTO:
 - Palavras como "aluno", "aluna", "registrar aluno", "listar alunos", "atualizar aluno", "importar alunos", "import students", "planilha", "Google Sheets", "CSV" → student_agent
 - Palavras como "vencimento", "dia de vencimento", "dia do pagamento" combinadas com ações de alteração ("alterar", "mudar", "trocar", "atualizar") → student_agent (pois payment_due_day é um dado cadastral do aluno)
@@ -755,8 +767,6 @@ REGRAS DE ROTEAMENTO:
 - Palavras como "conectar calendário", "desconectar calendário", "status calendário", "sincronizar", "Google Calendar", "Outlook" → calendar_agent
 - Palavras como "notificação", "notificar", "avisar", "mensagem para alunos", "enviar mensagem", "broadcast", "avisar alunos" → notification_agent
 - Para conversa geral (saudações, perguntas sobre funcionalidades, ajuda) → responda diretamente SEM chamar nenhuma ferramenta
-
-REGRA DE DESAMBIGUAÇÃO: Se a mensagem contém "vencimento" ou "dia de vencimento" ou "dia do pagamento" junto com ação de alteração ("alterar", "mudar", "trocar", "atualizar"), SEMPRE encaminhe para student_agent, mesmo que contenha "mensalidade". O campo payment_due_day é um atributo do cadastro do aluno, não uma operação de pagamento.
 
 REGRAS CRÍTICAS:
 - Quando encaminhar para um agente, passe a mensagem COMPLETA do usuário como query.
