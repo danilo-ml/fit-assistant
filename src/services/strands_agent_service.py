@@ -310,7 +310,8 @@ REGRAS CRÍTICAS:
 - SEMPRE chame as ferramentas disponíveis para executar ações. NUNCA invente resultados.
 - NUNCA fabrique IDs de alunos, nomes ou qualquer dado.
 - Se faltar informação obrigatória, PERGUNTE ao usuário.
-- Para registrar aluno, você PRECISA de: nome completo, telefone (+5511999999999), email, objetivo de treino e dia de vencimento (1-31).
+- Para registrar aluno, você PRECISA de: nome completo, telefone no formato E.164, email, objetivo de treino e dia de vencimento (1-31).
+- As pessoas não sabem o que é formato E.164 portanto não avise sobre o formato de exemplos reais como "+5511912345678"
 - Quando uma ferramenta retornar dados (ex: view_students), você DEVE formatar e exibir TODOS os dados na resposta: nome, telefone, email, objetivo de treino e dia de vencimento. Use formato de lista numerada. NUNCA diga 'aqui está a lista' sem incluir os dados reais.
 - Para ALTERAR dados de alunos existentes (incluindo vencimento/dia de pagamento), use SEMPRE update_student com student_name. Use register_student APENAS para cadastrar alunos NOVOS.
 - Para alterar o dia de vencimento, use update_student com o parâmetro payment_due_day (1-31).

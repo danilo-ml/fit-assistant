@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     # API Configuration
     api_gateway_rate_limit: int = 100  # requests per minute per IP
     
+    # Template Configuration
+    template_session_reminder_sid: Optional[str] = None
+    template_session_reminder_vars: Optional[str] = None
+    template_payment_reminder_sid: Optional[str] = None
+    template_payment_reminder_vars: Optional[str] = None
+    template_broadcast_sid: Optional[str] = None
+    template_broadcast_vars: Optional[str] = None
+
     # Development/Testing Configuration
     skip_twilio_signature_validation: bool = False  # Set to True for local testing
     

@@ -18,6 +18,7 @@ import boto3
 
 from models.dynamodb_client import DynamoDBClient
 from services.twilio_client import TwilioClient
+from services.template_registry import TemplateRegistry, TemplateConfig, build_content_variables
 from utils.logging import get_logger
 from config import settings
 
@@ -26,6 +27,7 @@ logger = get_logger(__name__)
 # Initialize services
 dynamodb_client = DynamoDBClient()
 twilio_client = TwilioClient()
+template_registry = TemplateRegistry()
 sqs_client = boto3.client(
     'sqs',
     region_name=settings.aws_region,
@@ -86,12 +88,17 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 recipient = message_body.get("recipient")
                 message_text = message_body.get("message")
                 attempt = message_body.get("attempt", 0)
+                content_sid = message_body.get("content_sid")
+                template_variables = message_body.get("template_variables")
+                notification_type = message_body.get("notification_type")
 
                 logger.info(
                     "Processing notification message",
                     notification_id=notification_id,
                     student_id=recipient.get("student_id"),
                     attempt=attempt,
+                    notification_type=notification_type,
+                    has_content_sid=bool(content_sid),
                 )
 
                 # Send WhatsApp message
@@ -99,6 +106,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     trainer_id=trainer_id,
                     recipient=recipient,
                     message=message_text,
+                    content_sid=content_sid,
+                    template_variables=template_variables,
                 )
 
                 if result["success"]:
@@ -111,6 +120,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         recipient=recipient,
                         status="sent",
                         message_sid=result.get("message_sid"),
+                        sending_method=result.get("sending_method"),
                     )
 
                     logger.info(
@@ -118,6 +128,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         notification_id=notification_id,
                         student_id=recipient.get("student_id"),
                         message_sid=result.get("message_sid"),
+                        sending_method=result.get("sending_method"),
                     )
 
                 else:
@@ -150,6 +161,9 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             recipient=recipient,
                             status="failed",
                             error=result.get("error"),
+                            sending_method=result.get("sending_method"),
+                            error_code=result.get("error_code"),
+                            error_message=result.get("error_message"),
                         )
 
                         logger.error(
@@ -201,20 +215,30 @@ def _send_notification_message(
     trainer_id: str,
     recipient: Dict[str, Any],
     message: str,
+    content_sid: str = None,
+    template_variables: Dict[str, str] = None,
 ) -> Dict[str, Any]:
     """
     Send notification message to recipient via WhatsApp.
 
+    Attempts template sending when content_sid is present. Falls back to
+    freeform if template variables are missing or incomplete.
+
     Args:
         trainer_id: Trainer identifier
         recipient: Recipient dictionary with student_id, student_name, phone_number
-        message: Notification message content
+        message: Notification message content (used for freeform fallback)
+        content_sid: Optional Twilio Content SID for template messages
+        template_variables: Optional dict of template placeholder values
 
     Returns:
         dict: {
             'success': bool,
             'message_sid': str (optional),
-            'error': str (optional)
+            'sending_method': 'template' or 'freeform',
+            'error': str (optional),
+            'error_code': int (optional),
+            'error_message': str (optional),
         }
     """
     try:
@@ -225,9 +249,49 @@ def _send_notification_message(
         if not phone_number:
             return {
                 "success": False,
+                "sending_method": "freeform",
                 "error": f"Student {student_id} has no phone number",
             }
 
+        # Attempt template message if content_sid is provided
+        if content_sid and template_variables is not None:
+            # Build a TemplateConfig from the content_sid and variable keys
+            template_config = TemplateConfig(
+                content_sid=content_sid,
+                variables=list(template_variables.keys()),
+            )
+            variables_json = build_content_variables(template_config, template_variables)
+
+            if variables_json:
+                logger.info(
+                    "Sending template notification message",
+                    student_id=student_id,
+                    phone_number=phone_number,
+                    content_sid=content_sid,
+                )
+
+                result = twilio_client.send_template_message(
+                    to=phone_number,
+                    content_sid=content_sid,
+                    content_variables=variables_json,
+                )
+
+                return {
+                    "success": result.get("status") != "failed",
+                    "message_sid": result.get("message_sid"),
+                    "sending_method": "template",
+                    "error_code": result.get("error_code"),
+                    "error_message": result.get("error_message"),
+                    "error": result.get("error_message") if result.get("status") == "failed" else None,
+                }
+            else:
+                logger.warning(
+                    "Missing template variables, falling back to freeform",
+                    student_id=student_id,
+                    content_sid=content_sid,
+                )
+
+        # Fallback to freeform message
         # Get trainer info for message context
         trainer = dynamodb_client.get_trainer(trainer_id)
         trainer_name = trainer.get("name", "your trainer") if trainer else "your trainer"
@@ -243,7 +307,7 @@ def _send_notification_message(
 
         # Send WhatsApp message
         logger.info(
-            "Sending notification message",
+            "Sending freeform notification message",
             student_id=student_id,
             phone_number=phone_number,
         )
@@ -256,6 +320,7 @@ def _send_notification_message(
         return {
             "success": True,
             "message_sid": result.get("message_sid"),
+            "sending_method": "freeform",
         }
 
     except Exception as e:
@@ -267,6 +332,7 @@ def _send_notification_message(
         )
         return {
             "success": False,
+            "sending_method": "freeform",
             "error": str(e),
         }
 
@@ -278,6 +344,9 @@ def _update_notification_status(
     status: str,
     message_sid: str = None,
     error: str = None,
+    sending_method: str = None,
+    error_code: int = None,
+    error_message: str = None,
 ) -> None:
     """
     Update notification delivery status in DynamoDB.
@@ -289,6 +358,9 @@ def _update_notification_status(
         status: Delivery status ("sent", "delivered", "failed")
         message_sid: Twilio message SID (optional)
         error: Error message if failed (optional)
+        sending_method: "template" or "freeform" (optional)
+        error_code: Twilio error code on failure (optional)
+        error_message: Twilio error message on failure (optional)
     """
     try:
         current_time = datetime.utcnow()
@@ -316,6 +388,8 @@ def _update_notification_status(
         for r in recipients:
             if r.get("student_id") == student_id:
                 r["status"] = status
+                if sending_method:
+                    r["sending_method"] = sending_method
                 if status == "sent":
                     r["sent_at"] = current_time.isoformat()
                     if message_sid:
@@ -326,6 +400,10 @@ def _update_notification_status(
                     r["failed_at"] = current_time.isoformat()
                     if error:
                         r["error"] = error
+                    if error_code is not None:
+                        r["error_code"] = error_code
+                    if error_message:
+                        r["error_message"] = error_message
                 break
 
         # Update overall notification status

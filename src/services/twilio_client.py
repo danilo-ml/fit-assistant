@@ -141,7 +141,129 @@ class TwilioClient:
                 error_type=type(e).__name__
             )
             raise
-    
+
+    def send_template_message(
+        self,
+        to: str,
+        content_sid: str,
+        content_variables: str,
+    ) -> dict:
+        """
+        Send a WhatsApp template message using Twilio Content API.
+
+        Uses content_sid and content_variables instead of body, enabling
+        delivery of business-initiated messages outside the 24-hour
+        customer service window.
+
+        Args:
+            to: Recipient phone number in E.164 format (e.g., +1234567890)
+            content_sid: Twilio Content SID (HX + 32 hex chars)
+            content_variables: JSON string of placeholder values,
+                e.g. '{"1":"John","2":"Monday"}'
+
+        Returns:
+            dict with keys: message_sid, status, error_code, error_message
+
+        Raises:
+            TwilioException: If message sending fails due to network/timeout
+
+        Example:
+            >>> client = TwilioClient()
+            >>> result = client.send_template_message(
+            ...     to="+1234567890",
+            ...     content_sid="HXb5b62575e6e4ff6129ad7c8efe1f983e",
+            ...     content_variables='{"1":"John","2":"Monday 10 AM"}'
+            ... )
+            >>> print(result['message_sid'])
+        """
+        from twilio.base.exceptions import TwilioRestException
+
+        from_number = self._format_whatsapp_number(self.whatsapp_number)
+        to_number = self._format_whatsapp_number(to)
+
+        logger.info(
+            "Sending WhatsApp template message",
+            to=to_number,
+            content_sid=content_sid,
+        )
+
+        try:
+            message = self.client.messages.create(
+                from_=from_number,
+                to=to_number,
+                content_sid=content_sid,
+                content_variables=content_variables,
+            )
+
+            result = {
+                'message_sid': message.sid,
+                'status': message.status,
+                'error_code': message.error_code,
+                'error_message': message.error_message,
+            }
+
+            logger.info(
+                "WhatsApp template message sent successfully",
+                message_sid=message.sid,
+                status=message.status,
+                to=to_number,
+                content_sid=content_sid,
+            )
+
+            return result
+
+        except TwilioRestException as e:
+            if e.code == 63016:
+                logger.error(
+                    "Freeform message blocked outside customer service window. "
+                    "Use a pre-approved template message instead.",
+                    to=to_number,
+                    error_code=e.code,
+                    error=str(e),
+                )
+            elif 'content_sid' in str(e).lower() or 'content sid' in str(e).lower():
+                logger.error(
+                    "Invalid Content SID",
+                    to=to_number,
+                    content_sid=content_sid,
+                    error_code=e.code,
+                    error=str(e),
+                )
+            elif 'content_variables' in str(e).lower() or 'content variables' in str(e).lower():
+                logger.error(
+                    "Invalid Content Variables",
+                    to=to_number,
+                    content_sid=content_sid,
+                    content_variables=content_variables,
+                    error_code=e.code,
+                    error=str(e),
+                )
+            else:
+                logger.error(
+                    "Failed to send WhatsApp template message",
+                    to=to_number,
+                    content_sid=content_sid,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+
+            return {
+                'message_sid': None,
+                'status': 'failed',
+                'error_code': e.code,
+                'error_message': str(e),
+            }
+
+        except Exception as e:
+            logger.error(
+                "Failed to send WhatsApp template message",
+                to=to_number,
+                content_sid=content_sid,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise
+
     def validate_signature(
         self,
         url: str,

@@ -19,6 +19,7 @@ import boto3
 
 from models.dynamodb_client import DynamoDBClient
 from services.twilio_client import TwilioClient
+from services.template_registry import TemplateRegistry, build_content_variables
 from utils.logging import get_logger
 from config import settings
 
@@ -27,6 +28,7 @@ logger = get_logger(__name__)
 # Initialize services
 dynamodb_client = DynamoDBClient()
 twilio_client = TwilioClient()
+template_registry = TemplateRegistry()
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -352,6 +354,9 @@ def _send_group_session_reminders(session: Dict[str, Any], current_time: datetim
 
     message_body = "\n".join(message_parts)
 
+    # Look up template once for all students
+    template_config = template_registry.get_template("session_reminder")
+
     sent = 0
     failed = 0
 
@@ -398,10 +403,43 @@ def _send_group_session_reminders(session: Dict[str, Any], current_time: datetim
                 session_datetime=session_datetime.isoformat(),
             )
 
-            result = twilio_client.send_message(
-                to=student_phone,
-                body=message_body,
-            )
+            # Try template message if configured
+            result = None
+
+            if template_config:
+                student_display_name = student.get('name', '')
+                template_variables = {
+                    "student_name": student_display_name,
+                    "session_date": session_date,
+                    "session_time": session_time,
+                }
+                content_variables = build_content_variables(template_config, template_variables)
+
+                if content_variables:
+                    logger.info(
+                        "Sending group session reminder via template",
+                        session_id=session_id,
+                        student_id=student_id,
+                        content_sid=template_config.content_sid,
+                    )
+                    result = twilio_client.send_template_message(
+                        to=student_phone,
+                        content_sid=template_config.content_sid,
+                        content_variables=content_variables,
+                    )
+                else:
+                    logger.warning(
+                        "Missing template variables for group session reminder, falling back to freeform",
+                        session_id=session_id,
+                        student_id=student_id,
+                    )
+
+            # Fallback to freeform message
+            if result is None:
+                result = twilio_client.send_message(
+                    to=student_phone,
+                    body=message_body,
+                )
 
             # Record reminder delivery in DynamoDB
             reminder_id = str(uuid.uuid4())
@@ -522,10 +560,42 @@ def _send_individual_session_reminder(session: Dict[str, Any], current_time: dat
         session_datetime=session_datetime.isoformat(),
     )
 
-    result = twilio_client.send_message(
-        to=student_phone,
-        body=message_body,
-    )
+    # Try template message if configured
+    template_config = template_registry.get_template("session_reminder")
+    result = None
+
+    if template_config:
+        student_display_name = student_name or student.get('name', '')
+        template_variables = {
+            "student_name": student_display_name,
+            "session_date": session_date,
+            "session_time": session_time,
+        }
+        content_variables = build_content_variables(template_config, template_variables)
+
+        if content_variables:
+            logger.info(
+                "Sending session reminder via template",
+                session_id=session_id,
+                content_sid=template_config.content_sid,
+            )
+            result = twilio_client.send_template_message(
+                to=student_phone,
+                content_sid=template_config.content_sid,
+                content_variables=content_variables,
+            )
+        else:
+            logger.warning(
+                "Missing template variables for session reminder, falling back to freeform",
+                session_id=session_id,
+            )
+
+    # Fallback to freeform message
+    if result is None:
+        result = twilio_client.send_message(
+            to=student_phone,
+            body=message_body,
+        )
 
     # Record reminder delivery in DynamoDB
     reminder_id = str(uuid.uuid4())

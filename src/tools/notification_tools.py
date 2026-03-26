@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from models.dynamodb_client import DynamoDBClient
 from utils.validation import InputSanitizer
 from utils.logging import get_logger
+from services.template_registry import TemplateRegistry
 from config import settings
 import boto3
 
@@ -189,6 +190,7 @@ def send_notification(
             trainer_id=trainer_id,
             message=message,
             recipients=selected_recipients,
+            trainer_name=trainer.get("name", ""),
         )
 
         # Record notification in DynamoDB
@@ -348,6 +350,7 @@ def _queue_notification_messages(
     trainer_id: str,
     message: str,
     recipients: List[Dict[str, Any]],
+    trainer_name: str = "",
 ) -> int:
     """
     Queue individual notification messages to SQS with rate limiting.
@@ -356,16 +359,26 @@ def _queue_notification_messages(
     - Target: 10 messages per second (Requirement 10.4)
     - Delay calculation: message_index // 10 seconds
 
+    When a broadcast template is configured in the TemplateRegistry,
+    adds notification_type, content_sid, and template_variables to
+    the SQS message body. Falls back to freeform when no template
+    is configured.
+
     Args:
         notification_id: Notification identifier
         trainer_id: Trainer identifier
         message: Notification message content
         recipients: List of recipient dictionaries
+        trainer_name: Trainer display name for template variables
 
     Returns:
         int: Number of messages successfully queued
     """
     queued_count = 0
+
+    # Look up broadcast template
+    registry = TemplateRegistry()
+    broadcast_template = registry.get_template("broadcast")
 
     for i, recipient in enumerate(recipients):
         try:
@@ -380,6 +393,15 @@ def _queue_notification_messages(
                 "message": message,
                 "attempt": 0,  # Track retry attempts
             }
+
+            # Add template fields when broadcast template is configured
+            if broadcast_template:
+                message_body["notification_type"] = "broadcast"
+                message_body["content_sid"] = broadcast_template.content_sid
+                message_body["template_variables"] = {
+                    "trainer_name": trainer_name,
+                    "message_content": message,
+                }
 
             # Send message to SQS notification queue
             response = sqs_client.send_message(

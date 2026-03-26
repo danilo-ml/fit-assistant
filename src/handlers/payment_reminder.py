@@ -15,6 +15,7 @@ from collections import defaultdict
 
 from models.dynamodb_client import DynamoDBClient
 from services.twilio_client import TwilioClient
+from services.template_registry import TemplateRegistry, build_content_variables
 from utils.logging import get_logger
 from config import settings
 
@@ -23,6 +24,7 @@ logger = get_logger(__name__)
 # Initialize services
 dynamodb_client = DynamoDBClient()
 twilio_client = TwilioClient()
+template_registry = TemplateRegistry()
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -217,4 +219,35 @@ def _send_reminder(
             f"Obrigado! 🙏"
         )
 
-    twilio_client.send_message(to=student_phone, body=message)
+    # Try template message if configured
+    template_config = template_registry.get_template("payment_reminder")
+    result = None
+
+    if template_config:
+        template_variables = {
+            "student_name": student_name,
+            "amount_due": str(due_day),
+            "due_date": str(due_day),
+        }
+        content_variables = build_content_variables(template_config, template_variables)
+
+        if content_variables:
+            logger.info(
+                "Sending payment reminder via template",
+                student_phone=student_phone,
+                content_sid=template_config.content_sid,
+            )
+            result = twilio_client.send_template_message(
+                to=student_phone,
+                content_sid=template_config.content_sid,
+                content_variables=content_variables,
+            )
+        else:
+            logger.warning(
+                "Missing template variables for payment reminder, falling back to freeform",
+                student_phone=student_phone,
+            )
+
+    # Fallback to freeform message
+    if result is None:
+        result = twilio_client.send_message(to=student_phone, body=message)
