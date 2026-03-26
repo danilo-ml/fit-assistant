@@ -908,7 +908,13 @@ Resources:
           ENVIRONMENT: !Ref Environment
           TEMPLATE_PAYMENT_REMINDER_SID: ""
           TEMPLATE_PAYMENT_REMINDER_VARS: ""
-      Tags: (runs at 10:00 UTC = 07:00 BRT)
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: FitAgent
+
+  # EventBridge Rule for Daily Payment Reminder (runs at 10:00 UTC = 07:00 BRT)
   PaymentReminderRule:
     Type: AWS::Events::Rule
     Properties:
