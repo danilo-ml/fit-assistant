@@ -626,6 +626,8 @@ Resources:
           OTEL_PYTHON_CONTEXT: contextvars_context
           OTEL_SDK_DISABLED: "true"
           OTEL_PROPAGATORS: "none"
+          TEMPLATE_BROADCAST_SID: ""
+          TEMPLATE_BROADCAST_VARS: ""
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -856,6 +858,8 @@ Resources:
           DYNAMODB_TABLE: !Ref FitAgentTable
           TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
           ENVIRONMENT: !Ref Environment
+          TEMPLATE_SESSION_REMINDER_SID: ""
+          TEMPLATE_SESSION_REMINDER_VARS: ""
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -902,13 +906,9 @@ Resources:
           DYNAMODB_TABLE: !Ref FitAgentTable
           TWILIO_SECRET_NAME: !Ref TwilioCredentialsSecret
           ENVIRONMENT: !Ref Environment
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Application
-          Value: FitAgent
-
-  # EventBridge Rule for Daily Payment Reminder (runs at 10:00 UTC = 07:00 BRT)
+          TEMPLATE_PAYMENT_REMINDER_SID: ""
+          TEMPLATE_PAYMENT_REMINDER_VARS: ""
+      Tags: (runs at 10:00 UTC = 07:00 BRT)
   PaymentReminderRule:
     Type: AWS::Events::Rule
     Properties:
