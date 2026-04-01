@@ -176,7 +176,7 @@ class TestLambdaHandler:
         # Verify
         assert response["statusCode"] == 200
         assert "text/html" in response["headers"]["Content-Type"]
-        assert "Calendar Connected Successfully" in response["body"]
+        assert "Calendário Conectado com Sucesso!" in response["body"]
         assert "Google Calendar" in response["body"]
 
         # Verify token exchange was called
@@ -234,7 +234,7 @@ class TestLambdaHandler:
 
         # Verify
         assert response["statusCode"] == 200
-        assert "Calendar Connected Successfully" in response["body"]
+        assert "Calendar Connected Successfully" in response["body"] or "Calendário Conectado com Sucesso!" in response["body"]
         assert "Outlook Calendar" in response["body"]
 
         # Verify token exchange was called with Outlook endpoint
@@ -494,7 +494,7 @@ class TestSendConfirmationMessage:
     """Tests for _send_confirmation_message function."""
 
     def test_send_google_confirmation(self, mock_twilio_client):
-        """Test sending Google Calendar confirmation message."""
+        """Test sending Google Calendar confirmation message in PT-BR."""
         _send_confirmation_message("+1234567890", "google", "request-123")
 
         mock_twilio_client.send_message.assert_called_once()
@@ -502,16 +502,17 @@ class TestSendConfirmationMessage:
 
         assert call_args["to"] == "+1234567890"
         assert "Google Calendar" in call_args["body"]
-        assert "connected successfully" in call_args["body"]
+        assert "conectado com sucesso" in call_args["body"]
 
     def test_send_outlook_confirmation(self, mock_twilio_client):
-        """Test sending Outlook Calendar confirmation message."""
+        """Test sending Outlook Calendar confirmation message in PT-BR."""
         _send_confirmation_message("+9876543210", "outlook", "request-456")
 
         call_args = mock_twilio_client.send_message.call_args[1]
 
         assert call_args["to"] == "+9876543210"
         assert "Outlook Calendar" in call_args["body"]
+        assert "conectado com sucesso" in call_args["body"]
 
     def test_send_confirmation_failure_does_not_raise(self, mock_twilio_client):
         """Test that confirmation message failure doesn't raise exception."""

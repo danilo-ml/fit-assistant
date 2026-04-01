@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     template_broadcast_sid: Optional[str] = None
     template_broadcast_vars: Optional[str] = None
 
+    # Website estático (para links de Termos e Privacidade)
+    website_base_url: str = ""
+
     # Development/Testing Configuration
     skip_twilio_signature_validation: bool = False  # Set to True for local testing
     
@@ -100,6 +103,22 @@ class Settings(BaseSettings):
             return None
         return v
     
+    @property
+    def terms_url(self) -> str:
+        """URL da página de Termos de Serviço, ou string vazia se WEBSITE_BASE_URL não configurada."""
+        if not self.website_base_url:
+            return ""
+        base = self.website_base_url.rstrip("/")
+        return f"{base}/termos.html"
+
+    @property
+    def privacy_url(self) -> str:
+        """URL da página de Política de Privacidade, ou string vazia se WEBSITE_BASE_URL não configurada."""
+        if not self.website_base_url:
+            return ""
+        base = self.website_base_url.rstrip("/")
+        return f"{base}/privacidade.html"
+
     def _get_secrets_manager_client(self):
         """Get boto3 Secrets Manager client."""
         import boto3

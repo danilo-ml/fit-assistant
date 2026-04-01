@@ -443,9 +443,17 @@ REGRAS CRÍTICAS:
 
             if isinstance(result, dict) and result.get("success"):
                 oauth_url = result["data"]["oauth_url"]
+                legal_paragraph = ""
+                if settings.terms_url:
+                    legal_paragraph = (
+                        f"\n\nAo conectar o calendário, você concorda com os "
+                        f"Termos de Serviço ({settings.terms_url}) e a "
+                        f"Política de Privacidade ({settings.privacy_url}) do FitAgent."
+                    )
                 return (
                     f"Para conectar seu {provider_name}, clique no link abaixo para autorizar o acesso:\n\n"
-                    f"{oauth_url}\n\n"
+                    f"{oauth_url}"
+                    f"{legal_paragraph}\n\n"
                     f"O link expira em 30 minutos. Após autorizar, suas sessões serão sincronizadas automaticamente."
                 )
             elif isinstance(result, dict) and not result.get("success"):

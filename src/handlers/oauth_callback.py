@@ -96,6 +96,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return _error_html_response(
                 "Authorization Failed",
                 f"Calendar authorization was not completed: {error_description}",
+                terms_url=settings.terms_url,
+                privacy_url=settings.privacy_url,
             )
 
         # Validate required parameters
@@ -104,7 +106,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 "Missing OAuth parameters", request_id=request_id, has_code=bool(code), has_state=bool(state)
             )
             return _error_html_response(
-                "Invalid Request", "Missing required OAuth parameters (code or state)."
+                "Invalid Request",
+                "Missing required OAuth parameters (code or state).",
+                terms_url=settings.terms_url,
+                privacy_url=settings.privacy_url,
             )
 
         logger.info("Processing OAuth callback", request_id=request_id, state_token=state)
@@ -116,6 +121,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return _error_html_response(
                 "Invalid Request",
                 "The authorization link has expired or is invalid. Please request a new calendar connection link.",
+                terms_url=settings.terms_url,
+                privacy_url=settings.privacy_url,
             )
 
         trainer_id = state_data["trainer_id"]
@@ -140,6 +147,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return _error_html_response(
                 "Authorization Failed",
                 "Failed to complete calendar authorization. Please try again.",
+                terms_url=settings.terms_url,
+                privacy_url=settings.privacy_url,
             )
 
         access_token = token_data["access_token"]
@@ -168,6 +177,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return _error_html_response(
                 "Authorization Incomplete",
                 "Calendar authorization did not provide offline access. Please try again.",
+                terms_url=settings.terms_url,
+                privacy_url=settings.privacy_url,
             )
 
         encrypted_refresh_token = encrypt_oauth_token_base64(refresh_token)
@@ -211,7 +222,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         _delete_state_token(state, request_id)
 
         # Return success HTML page
-        return _success_html_response(provider)
+        return _success_html_response(
+            provider,
+            terms_url=settings.terms_url,
+            privacy_url=settings.privacy_url,
+        )
 
     except Exception as e:
         logger.error(
@@ -223,6 +238,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return _error_html_response(
             "Error",
             "An unexpected error occurred while processing your calendar authorization. Please try again.",
+            terms_url=settings.terms_url,
+            privacy_url=settings.privacy_url,
         )
 
 
@@ -430,10 +447,16 @@ def _send_confirmation_message(phone_number: str, provider: str, request_id: str
     provider_name = "Google Calendar" if provider == "google" else "Outlook Calendar"
 
     message = (
-        f"✅ {provider_name} connected successfully!\n\n"
-        f"Your training sessions will now automatically sync to your calendar. "
-        f"When you schedule, reschedule, or cancel sessions, the changes will be reflected in your calendar within 30 seconds."
+        f"✅ {provider_name} conectado com sucesso!\n\n"
+        f"Suas sessões de treino serão sincronizadas automaticamente com seu calendário. "
+        f"Ao agendar, reagendar ou cancelar sessões, as alterações serão refletidas no seu calendário."
     )
+
+    if settings.terms_url:
+        message += (
+            f"\n\nTermos de Serviço: {settings.terms_url}\n"
+            f"Política de Privacidade: {settings.privacy_url}"
+        )
 
     try:
         twilio_client.send_message(to=phone_number, body=message)
@@ -481,17 +504,28 @@ def _delete_state_token(state: str, request_id: str) -> None:
         )
 
 
-def _success_html_response(provider: str) -> Dict[str, Any]:
+def _success_html_response(provider: str, terms_url: str = "", privacy_url: str = "") -> Dict[str, Any]:
     """
     Generate success HTML response for OAuth callback.
 
     Args:
         provider: Calendar provider ('google' or 'outlook')
+        terms_url: URL for Terms of Service page (empty to omit footer)
+        privacy_url: URL for Privacy Policy page (empty to omit footer)
 
     Returns:
         API Gateway response with HTML page
     """
     provider_name = "Google Calendar" if provider == "google" else "Outlook Calendar"
+
+    footer_html = ""
+    if terms_url:
+        footer_html = f"""
+            <div class="footer-links">
+                <a href="{terms_url}" target="_blank">Termos de Serviço</a>
+                <span>|</span>
+                <a href="{privacy_url}" target="_blank">Política de Privacidade</a>
+            </div>"""
 
     html = f"""
     <!DOCTYPE html>
@@ -499,7 +533,7 @@ def _success_html_response(provider: str) -> Dict[str, Any]:
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Calendar Connected - FitAgent</title>
+        <title>Calendário Conectado - FitAgent</title>
         <style>
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -542,22 +576,39 @@ def _success_html_response(provider: str) -> Dict[str, Any]:
                 font-size: 0.875rem;
                 margin-top: 2rem;
             }}
+            .footer-links {{
+                margin-top: 2rem;
+                padding-top: 1rem;
+                border-top: 1px solid #e2e8f0;
+                font-size: 0.8rem;
+                color: #718096;
+            }}
+            .footer-links a {{
+                color: #667eea;
+                text-decoration: none;
+            }}
+            .footer-links a:hover {{
+                text-decoration: underline;
+            }}
+            .footer-links span {{
+                margin: 0 0.5rem;
+            }}
         </style>
     </head>
     <body>
         <div class="container">
             <div class="success-icon">✅</div>
-            <h1>Calendar Connected Successfully!</h1>
+            <h1>Calendário Conectado com Sucesso!</h1>
             <p>
-                Your <span class="provider">{provider_name}</span> has been connected to FitAgent.
+                Seu <span class="provider">{provider_name}</span> foi conectado ao FitAgent.
             </p>
             <p>
-                Your training sessions will now automatically sync to your calendar.
-                You'll receive a confirmation message on WhatsApp shortly.
+                Suas sessões de treino serão sincronizadas automaticamente com seu calendário.
+                Você receberá uma mensagem de confirmação no WhatsApp em breve.
             </p>
             <p class="close-message">
-                You can close this window and return to WhatsApp.
-            </p>
+                Você pode fechar esta janela e voltar ao WhatsApp.
+            </p>{footer_html}
         </div>
     </body>
     </html>
@@ -566,17 +617,28 @@ def _success_html_response(provider: str) -> Dict[str, Any]:
     return {"statusCode": 200, "headers": {"Content-Type": "text/html"}, "body": html}
 
 
-def _error_html_response(title: str, message: str) -> Dict[str, Any]:
+def _error_html_response(title: str, message: str, terms_url: str = "", privacy_url: str = "") -> Dict[str, Any]:
     """
     Generate error HTML response for OAuth callback.
 
     Args:
         title: Error title
         message: Error message
+        terms_url: URL for Terms of Service page (empty to omit footer)
+        privacy_url: URL for Privacy Policy page (empty to omit footer)
 
     Returns:
         API Gateway response with HTML page
     """
+    footer_html = ""
+    if terms_url:
+        footer_html = f"""
+            <div class="footer-links">
+                <a href="{terms_url}" target="_blank">Termos de Serviço</a>
+                <span>|</span>
+                <a href="{privacy_url}" target="_blank">Política de Privacidade</a>
+            </div>"""
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -622,6 +684,23 @@ def _error_html_response(title: str, message: str) -> Dict[str, Any]:
                 font-size: 0.875rem;
                 margin-top: 2rem;
             }}
+            .footer-links {{
+                margin-top: 2rem;
+                padding-top: 1rem;
+                border-top: 1px solid #e2e8f0;
+                font-size: 0.8rem;
+                color: #718096;
+            }}
+            .footer-links a {{
+                color: #667eea;
+                text-decoration: none;
+            }}
+            .footer-links a:hover {{
+                text-decoration: underline;
+            }}
+            .footer-links span {{
+                margin: 0 0.5rem;
+            }}
         </style>
     </head>
     <body>
@@ -630,8 +709,8 @@ def _error_html_response(title: str, message: str) -> Dict[str, Any]:
             <h1>{title}</h1>
             <p>{message}</p>
             <p class="close-message">
-                You can close this window and return to WhatsApp to try again.
-            </p>
+                Você pode fechar esta janela e voltar ao WhatsApp para tentar novamente.
+            </p>{footer_html}
         </div>
     </body>
     </html>

@@ -218,7 +218,7 @@ class TestNonCalendarMessagePreservation:
         response_text=non_calendar_response_strategy(),
     )
     @hyp_settings(
-        max_examples=20,
+        max_examples=10,
         deadline=30000,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

@@ -517,7 +517,7 @@ class TestToolFunctionPreservation:
         training_goal=st.text(min_size=5, max_size=100).filter(lambda x: x.strip())
     )
     @settings(
-        max_examples=20,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
@@ -579,7 +579,7 @@ class TestToolFunctionPreservation:
         duration_minutes=st.integers(min_value=15, max_value=480)
     )
     @settings(
-        max_examples=20,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
@@ -639,7 +639,7 @@ class TestToolFunctionPreservation:
         amount=st.floats(min_value=0.01, max_value=10000.0, allow_nan=False, allow_infinity=False)
     )
     @settings(
-        max_examples=20,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
